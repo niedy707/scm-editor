@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<title>TV Frekans Doğrulama</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <strong>TV Frekans Doğrulama</strong>
+    <span class="muted">TV'nin listesi × Türksat resmî tablosu</span>
+  </div>
+  <div class="bar-right">
+    <a class="ghost linkbtn" href="index.html">Dosya editörüne geç →</a>
+  </div>
+</header>
+
+<section class="pane">
+
+  <div id="load" class="drop">
+    <p class="drop-title">TV dökümünü yükle</p>
+    <p class="muted">
+      <code>node tools/lgtv-read.mjs &lt;TV-IP&gt;</code> komutunun ürettiği <code>.json</code> dosyası
+    </p>
+    <p style="margin-top:16px">
+      <button id="btnPick" class="primary" type="button">Dosya seç</button>
+      <button id="btnLocal" class="ghost" type="button">Bu bilgisayardaki okumayı aç</button>
+    </p>
+    <input type="file" id="file" accept=".json" hidden>
+  </div>
+
+  <div id="report" hidden>
+    <div class="fileinfo">
+      <div>
+        <span class="badge" id="badge">—</span>
+        <b id="model">—</b>
+        <span class="muted" id="meta"></span>
+      </div>
+      <div class="fileinfo-actions">
+        <button id="btnRecipe" class="ghost" type="button">Sıra tarifini indir</button>
+        <button id="btnCsv" class="ghost" type="button">CSV indir</button>
+      </div>
+    </div>
+
+    <div id="advice" class="warn"></div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Kanal ara…">
+      <select id="filter">
+        <option value="all">Tümü</option>
+        <option value="eski">Eski frekans</option>
+        <option value="tp-tanindi">Transponder tanındı</option>
+        <option value="tabloda-yok">Tabloda yok</option>
+        <option value="supheli">Şüpheli uydu</option>
+        <option value="guncel">Güncel</option>
+      </select>
+      <span class="spacer"></span>
+      <span class="muted" id="count"></span>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="num">No</th>
+            <th>Kanal</th>
+            <th class="num">TV frekansı</th>
+            <th class="num">Türksat</th>
+            <th>Uydu</th>
+            <th>Durum</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <details class="tpbox">
+      <summary>Transponder karşılaştırması</summary>
+      <div id="tps"></div>
+    </details>
+
+    <details class="tpbox">
+      <summary id="missSum">Türksat'ta olup TV'de bulunmayan kanallar</summary>
+      <div id="missing" class="misslist"></div>
+    </details>
+  </div>
+</section>
+
+<div id="toasts"></div>
+
+<script src="lib/order.js"></script>
+<script src="lib/verify.js"></script>
+<script src="tv.js"></script>
+</body>
+</html>

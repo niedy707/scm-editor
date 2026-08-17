@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TV Kanal Aracı</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <strong>TV Kanal Aracı</strong>
+    <span class="muted">evdeki televizyonları bul, listeyi denetle, sıranı geri getir</span>
+  </div>
+  <div class="bar-right">
+    <span id="bridgeState" class="stat muted">köprü aranıyor…</span>
+  </div>
+</header>
+
+<section class="pane">
+
+  <div class="fileinfo">
+    <div>
+      <b>Evdeki televizyonlar</b>
+      <span class="muted" id="scanMeta"> · henüz taranmadı</span>
+    </div>
+    <div class="fileinfo-actions">
+      <button id="btnScan" class="primary" type="button">Ağı tara</button>
+    </div>
+  </div>
+
+  <div id="scanNote" class="warn" hidden></div>
+
+  <div id="devices" class="devgrid"></div>
+
+  <div class="steps" style="margin-top:26px">
+    <h2>Köprü çalışmıyorsa</h2>
+    <p class="muted" style="margin:0 0 10px">
+      Tarayıcı televizyona doğrudan bağlanamaz: TV yalnız <code>wss://…:3001</code> konuşuyor ve kendi özel
+      sertifikasını sunuyor; tarayıcılar WebSocket'te sertifika hatasını atlatmaya izin vermiyor. Bu yüzden ağ
+      işlerini bilgisayarında çalışan küçük bir köprü yapıyor.
+    </p>
+    <pre class="cmd">node tools/bridge.mjs</pre>
+    <p class="muted" style="margin:10px 0 0">Telefondan kullanmak için ev ağına aç:</p>
+    <pre class="cmd">node tools/bridge.mjs --lan</pre>
+  </div>
+
+  <div class="hubgrid">
+    <a class="hubcard" href="tv.html">
+      <h3>Frekans doğrulama</h3>
+      <p class="muted">TV'nin listesini Türksat'ın resmî tablosuyla karşılaştır: hangi kanal eski frekansta,
+        hangisi emekli uyduyu gösteriyor, hangi kanallar hiç bulunmamış.</p>
+    </a>
+    <a class="hubcard" href="index.html">
+      <h3>Dosya editörü</h3>
+      <p class="muted">USB ile aldığın <code>GlobalClone00001.TLL</code> dosyasını düzenle: sırala, adlandır,
+        eski sıranı geri uygula, byte-sadık kaydet.</p>
+    </a>
+  </div>
+</section>
+
+<div id="toasts"></div>
+<script src="home.js"></script>
+</body>
+</html>

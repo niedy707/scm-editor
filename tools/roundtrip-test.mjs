@@ -270,6 +270,36 @@ t('sıra motoru planı byte-sadık uygulanır ve geri okunur', () => {
   eq(p2.channels.length, p.channels.length, 'kanal sayısı değişti');
 });
 
+t('sıra motoru: ONID gelmeyen TV\'de SVCID+TSID ile eşleşir (webOS 4.5)', () => {
+  // Gerçek cihaz: LG 55SM8000PLA, 609 kanalın hiçbirinde ONID yok.
+  const yeni = [
+    { idx: 0, name: 'BAMBAŞKA AD', SVCID: 111, TSID: 22, ONID: null, frequency: 11794, videoPid: null, audioPid: null },
+    { idx: 1, name: 'DİĞER', SVCID: 333, TSID: 44, ONID: null, frequency: 12245, videoPid: null, audioPid: null },
+  ];
+  const eski = [
+    { name: 'ESKI AD', number: 7, SVCID: 111, TSID: 22, ONID: null, frequency: 11794, videoPid: null, audioPid: null },
+    { name: 'ESKI 2', number: 9, SVCID: 333, TSID: 44, ONID: null, frequency: 12245, videoPid: null, audioPid: null },
+  ];
+  const res = Order.match(eski, yeni);
+  eq(res.matched.length, 2, 'ONID olmadan eşleşmeliydi');
+  ok(res.matched.every((m) => m.method === 'id2'), 'SVCID+TSID turu kullanılmadı');
+});
+
+t('sıra motoru: ONID varsa tam kimlik tercih edilir', () => {
+  const yeni = [{ idx: 0, name: 'X', SVCID: 1, TSID: 2, ONID: 3, frequency: 100, videoPid: null, audioPid: null }];
+  const eski = [{ name: 'Y', number: 5, SVCID: 1, TSID: 2, ONID: 3, frequency: 100, videoPid: null, audioPid: null }];
+  const res = Order.match(eski, yeni);
+  eq(res.matched[0].method, 'id');
+});
+
+t('sıra motoru: SVCID+TSID aynı ama ONID farklıysa yanlış eşleşme yapmaz', () => {
+  const yeni = [{ idx: 0, name: 'X', SVCID: 1, TSID: 2, ONID: 99, frequency: 100, videoPid: null, audioPid: null }];
+  const eski = [{ name: 'Y', number: 5, SVCID: 1, TSID: 2, ONID: 3, frequency: 500, videoPid: null, audioPid: null }];
+  const res = Order.match(eski, yeni);
+  // tam kimlik tutmaz; ONID iki tarafta da dolu olduğu için id2 turuna girmez
+  ok(res.matched.length === 0 || res.matched[0].method !== 'id', 'yanlış tam-kimlik eşleşmesi');
+});
+
 // ═══════════════════════════════════════════════════════════════════ rapor
 
 const w = Math.max(...results.map((r) => r[1].length));

@@ -191,3 +191,41 @@ tr.changed { background: var(--changed); }
 @media (max-width: 640px) {
   .toolbar input[type=search] { min-width: 140px; flex: 1; }
 }
+
+/* ── TV doğrulama ekranı */
+.linkbtn { display:inline-block; text-decoration:none; padding:7px 13px; border:1px solid var(--border); border-radius:8px; color:var(--ink); }
+.linkbtn:hover { border-color: var(--accent); }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin:16px 0; }
+.card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px; text-align:center; }
+.card-n { font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; }
+.card-l { font-size:12px; color:var(--muted); margin-top:2px; }
+.card.ok .card-n { color:var(--ok); }
+.card.warn .card-n { color:var(--warn); }
+.card.err .card-n { color:var(--err); }
+.stat { font-size:12px; padding:2px 9px; border-radius:20px; border:1px solid var(--border); }
+.stat.ok { color:var(--ok); border-color:var(--ok); }
+.stat.warn { color:var(--warn); border-color:var(--warn); }
+.stat.err { color:var(--err); border-color:var(--err); }
+.stat.muted { color:var(--muted); }
+.tpbox { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-top:14px; }
+.tpbox summary { cursor:pointer; font-weight:600; }
+.tpbox .misslist span small { color:var(--muted); }
+
+/* ── ana sayfa / cihaz kartları */
+.devgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:12px; margin-top:14px; }
+.devcard { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+.devhead { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.small { font-size:12px; }
+.devnote { margin-top:8px; padding:8px 10px; border-radius:8px; background:var(--warn-bg); font-size:12px; }
+.devactions { margin-top:12px; }
+.devlog { margin-top:10px; font-size:12px; display:grid; gap:3px; }
+.devlog .ok { color:var(--ok); }
+.devlog .err { color:var(--err); }
+.devlog .hi { color:var(--warn); font-weight:600; }
+.hubgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-top:26px; }
+.hubcard { display:block; text-decoration:none; color:inherit; background:var(--panel);
+  border:1px solid var(--border); border-radius:12px; padding:18px 20px; }
+.hubcard:hover { border-color:var(--accent); }
+.hubcard h3 { margin:0 0 6px; font-size:15px; }
+.cmd { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:9px 12px;
+  margin:0; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; overflow-x:auto; }

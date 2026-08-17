@@ -8,3 +8,4 @@ node_modules/
 fixtures/local/
 *.TLL
 !fixtures/synthetic/*.TLL
+.vercel

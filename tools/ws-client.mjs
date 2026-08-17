@@ -146,7 +146,7 @@ class WsConnection extends EventEmitter {
 }
 
 /** Bir soket üzerinde WebSocket el sıkışmasını yapar. */
-function handshake(socket, host, port, timeoutMs) {
+function handshake(socket, host, port, timeoutMs, path = '/') {
   return new Promise((ok, fail) => {
     const key = crypto.randomBytes(16).toString('base64');
     const expect = crypto.createHash('sha1').update(key + GUID).digest('base64');
@@ -195,7 +195,7 @@ function handshake(socket, host, port, timeoutMs) {
     socket.on('data', onData);
     socket.on('error', onErr);
     socket.write(
-      `GET / HTTP/1.1\r\nHost: ${host}:${port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+      `GET ${path} HTTP/1.1\r\nHost: ${host}:${port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
         `Sec-WebSocket-Key: ${key}\r\nSec-WebSocket-Version: 13\r\n\r\n`
     );
   });
@@ -206,7 +206,7 @@ function handshake(socket, host, port, timeoutMs) {
  * bir LG cihaz sertifikası olduğu doğrulanır.
  * @returns {Promise<{conn: WsConnection, certificate: object}>}
  */
-export function connectSecure(host, port = 3001, { timeoutMs = 8000, allowAnyCertificate = false } = {}) {
+export function connectSecure(host, port = 3001, { timeoutMs = 8000, allowAnyCertificate = false, path = '/' } = {}) {
   return new Promise((ok, fail) => {
     const socket = tls.connect({ host, port, rejectUnauthorized: false, servername: undefined });
     socket.setTimeout(timeoutMs);
@@ -224,13 +224,26 @@ export function connectSecure(host, port = 3001, { timeoutMs = 8000, allowAnyCer
         ));
         return;
       }
-      handshake(socket, host, port, timeoutMs).then((conn) => ok({ conn, certificate: cert }), fail);
+      handshake(socket, host, port, timeoutMs, path).then((conn) => ok({ conn, certificate: cert }), fail);
     });
   });
 }
 
+/**
+ * Tam bir wss:// URL'ine bağlanır (yol dahil).
+ * LG'nin kumanda giriş soketi kökte değil, `/resources/<hash>/netinput.pointer.sock`
+ * gibi bir yolda durur — bu yüzden yol desteği şart.
+ */
+export function connectUrl(urlStr, opts = {}) {
+  const u = new URL(urlStr);
+  const port = u.port ? Number(u.port) : u.protocol === 'wss:' ? 3001 : 3000;
+  const path = (u.pathname || '/') + (u.search || '');
+  if (u.protocol === 'wss:') return connectSecure(u.hostname, port, { ...opts, path });
+  return connectPlain(u.hostname, port, { ...opts, path });
+}
+
 /** Düz ws bağlantısı (eski modeller, port 3000). */
-export function connectPlain(host, port = 3000, { timeoutMs = 8000 } = {}) {
+export function connectPlain(host, port = 3000, { timeoutMs = 8000, path = '/' } = {}) {
   return new Promise((ok, fail) => {
     const socket = net.createConnection({ host, port });
     socket.setTimeout(timeoutMs);
@@ -238,25 +251,44 @@ export function connectPlain(host, port = 3000, { timeoutMs = 8000 } = {}) {
     socket.once('error', (e) => fail(e));
     socket.once('connect', () => {
       socket.setTimeout(0);
-      handshake(socket, host, port, timeoutMs).then((conn) => ok({ conn, certificate: null }), fail);
+      handshake(socket, host, port, timeoutMs, path).then((conn) => ok({ conn, certificate: null }), fail);
     });
   });
 }
 
-/** Önce wss:3001, olmazsa ws:3000 dener. */
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Önce wss:3001, olmazsa ws:3000 dener; her ikisi de artan beklemeyle
+ * yeniden denenir.
+ *
+ * Neden yeniden deneme şart: TV eşzamanlı SSAP oturumu sayısını sınırlıyor ve
+ * bir önceki bağlantının kapanışı cihaz tarafında birkaç saniye sürebiliyor.
+ * Bu aralıkta yeni bağlantı sessizce zaman aşımına düşüyor — gerçek cihazda
+ * (OLED83G55LW) art arda çalıştırmalarda tekrar tekrar gözlendi. Tek denemede
+ * pes etmek kullanıcıya "TV kapalı" gibi yanlış bir teşhis verir.
+ */
 export async function connectAuto(host, opts = {}) {
-  const errors = [];
-  try {
-    const r = await connectSecure(host, 3001, opts);
-    return { ...r, url: `wss://${host}:3001` };
-  } catch (e) {
-    errors.push(`wss://${host}:3001 → ${e.message}`);
+  const { retries = 3, retryDelayMs = 1500 } = opts;
+  let errors = [];
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    errors = [];
+    try {
+      const r = await connectSecure(host, 3001, opts);
+      return { ...r, url: `wss://${host}:3001`, deneme: attempt + 1 };
+    } catch (e) {
+      errors.push(`wss://${host}:3001 → ${e.message}`);
+    }
+    try {
+      const r = await connectPlain(host, 3000, opts);
+      return { ...r, url: `ws://${host}:3000`, deneme: attempt + 1 };
+    } catch (e) {
+      errors.push(`ws://${host}:3000 → ${e.message}`);
+    }
+    if (attempt < retries) await wait(retryDelayMs * (attempt + 1));
   }
-  try {
-    const r = await connectPlain(host, 3000, opts);
-    return { ...r, url: `ws://${host}:3000` };
-  } catch (e) {
-    errors.push(`ws://${host}:3000 → ${e.message}`);
-  }
-  throw new Error('Bağlanılamadı.\n  ' + errors.join('\n  '));
+  throw new Error(
+    `Bağlanılamadı (${retries + 1} deneme).\n  ` + errors.join('\n  ') +
+      '\n  TV açık ve aynı ağda mı? Bir önceki bağlantı kapanıyorsa birkaç saniye sonra tekrar dene.'
+  );
 }

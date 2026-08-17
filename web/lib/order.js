@@ -47,8 +47,18 @@
   const near = (a, b) =>
     a != null && b != null && Math.abs(Number(a) - Number(b)) <= FREQ_TOLERANCE;
 
-  const hasId = (c) => c && c.SVCID != null && c.TSID != null && c.ONID != null;
+  /**
+   * DVB kimliği iki kademelidir — çünkü her TV üç alanı birden vermiyor.
+   * Gerçek cihazda ölçüldü: LG 55SM8000PLA (webOS 4.5, firmware 05.40.97)
+   * 609 kanalın hiçbirinde ONID döndürmüyor, ama SVCID ve TSID tam geliyor.
+   * Üçlüyü şart koşan bir eşleştirme o TV'de kimlik turunu tamamen atlar ve
+   * isim tahminine düşer. Bu yüzden ONID varsa kullanılır, yoksa SVCID+TSID
+   * ikilisiyle eşleşilir (aynı transponder içinde SVCID zaten benzersizdir).
+   */
+  const hasId = (c) => c && c.SVCID != null && c.TSID != null;
+  const hasFullId = (c) => hasId(c) && c.ONID != null;
   const idKey = (c) => `${c.SVCID}/${c.TSID}/${c.ONID}`;
+  const idKey2 = (c) => `${c.SVCID}/${c.TSID}`;
 
   /**
    * @param {Array} oldList  eski liste — {name, number, SVCID, TSID, ONID, frequency, videoPid, audioPid}
@@ -72,19 +82,34 @@
       });
     };
 
-    // ── 1. tur: DVB kimliği
+    // ── 1a. tur: tam DVB kimliği (SVCID + TSID + ONID)
     const byId = new Map();
     newList.forEach((c) => {
-      if (!hasId(c)) return;
+      if (!hasFullId(c)) return;
       const k = idKey(c);
       if (!byId.has(k)) byId.set(k, []);
       byId.get(k).push(c);
     });
     oldList.forEach((o, oi) => {
-      if (!hasId(o)) return;
+      if (!hasFullId(o)) return;
       const cands = byId.get(idKey(o));
       const c = cands && cands.find((x) => !usedNew.has(x.idx));
       if (c) take(oi, c, 'id');
+    });
+
+    // ── 1b. tur: ONID'siz kimlik (SVCID + TSID) — webOS 4.5 ONID vermiyor
+    const byId2 = new Map();
+    newList.forEach((c) => {
+      if (usedNew.has(c.idx) || !hasId(c)) return;
+      const k = idKey2(c);
+      if (!byId2.has(k)) byId2.set(k, []);
+      byId2.get(k).push(c);
+    });
+    oldList.forEach((o, oi) => {
+      if (usedOld.has(oi) || !hasId(o)) return;
+      const cands = byId2.get(idKey2(o));
+      const c = cands && cands.find((x) => !usedNew.has(x.idx));
+      if (c) take(oi, c, 'id2');
     });
 
     // ── 2. tur: normalize edilmiş ad (birebir)

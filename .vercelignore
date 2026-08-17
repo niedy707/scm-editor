@@ -1,0 +1,11 @@
+# ⚠️ TV eşleştirme anahtarı — yayınlanırsa aynı ağdaki herkes TV'ye bağlanabilir.
+.lgtv-clients.json
+
+# Yerel çalışan araçlar; Vercel statik site olarak yayınlanıyor, bunlar sunucuda çalışmaz
+tools/
+fixtures/
+
+# Kişisel/çalışma dosyaları
+node_modules/
+.DS_Store
+*.log
