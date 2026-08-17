@@ -1,0 +1,17 @@
+{
+  "name": "scm-editor",
+  "version": "0.1.0",
+  "description": "LG TV kanal listesi editörü — ağdan oku, tarayıcıda düzenle, USB ile yaz",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "tv:read": "node tools/lgtv-read.mjs",
+    "turksat:fetch": "node tools/fetch-turksat.mjs",
+    "fixtures": "node tools/make-fixtures.mjs",
+    "test": "node tools/roundtrip-test.mjs",
+    "web": "node tools/serve.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

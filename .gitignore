@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+
+# TV eşleştirme anahtarı — cihaza özel, paylaşma
+.lgtv-clients.json
+
+# Kendi kanal listesi dosyaların (kişisel veri içerebilir)
+fixtures/local/
+*.TLL
+!fixtures/synthetic/*.TLL
