@@ -55,7 +55,7 @@
       "durum_tarihi": "2026-08-17",
       "skor": 36,
       "guven": "✅",
-      "not": "tools/fetch-turksat.mjs → data/turksat-42e-latest.json (715 satır)"
+      "not": "tools/fetch-turksat.mjs → data/turksat-42e-latest.json (749 satır)"
     },
     {
       "id": "Ö-6",
@@ -154,7 +154,7 @@
       "durum_tarihi": "2026-08-17",
       "skor": 24,
       "guven": "✅",
-      "not": "tools/make-fixtures.mjs + roundtrip-test.mjs (31 test)"
+      "not": "tools/make-fixtures.mjs + roundtrip-test.mjs (36 test)"
     },
     {
       "id": "Ö-15",
@@ -314,12 +314,12 @@
       "id": "Ö-29",
       "baslik": "TV'yi ağ üzerinden kontrol eden entegrasyon",
       "bolum": "mimari",
-      "durum": "vazgeçildi",
+      "durum": "açık",
       "ilk_gorulme": "2026-08-17",
       "durum_tarihi": "2026-08-17",
       "skor": 0,
       "guven": "⚪",
-      "not": "webOS kanal listesi API'si halka açık değil; USB akışı zaten çalışıyor."
+      "not": "Kullanıcı bunu açıkça istedi (\"kumanda gibi davranıp menüden ayar yap\"). Gerçek cihazda doğrulandı: SSAP'ta yazma ucu yok (14 setter adayı 404) ama getPointerInputSocket VAR ve com.webos.app.channeledit ağdan açılabiliyor. Kapalı döngü sürücü (lg-editor.mjs) henüz yazılmadı."
     }
   ],
   "arastirma": {

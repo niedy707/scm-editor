@@ -69,14 +69,14 @@ duruyorlar ve yayında olup olmadıkları doğrulanamadı.
 node tools/serve.mjs        # http://127.0.0.1:8173
 ```
 
-`web/index.html` dosyasını çift tıklayarak da açabilirsin; tek fark, `file://` üzerinden
+`web/editor.html` dosyasını çift tıklayarak da açabilirsin; tek fark, `file://` üzerinden
 Türksat veri dosyası okunamadığı için "Türksat'a göre" sütununun boş kalmasıdır.
 
 ### 4. Testler
 
 ```bash
 node tools/make-fixtures.mjs   # sentetik test dosyaları üret
-node tools/roundtrip-test.mjs  # 31 test
+node tools/roundtrip-test.mjs  # 36 test
 ```
 
 ## Desteklenen formatlar

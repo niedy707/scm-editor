@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Sıfır dış istek: CDN yok, font yok, analytics yok.
+  connect-src 'self' + yerel köprü: ağ taraması için 127.0.0.1'deki köprüye izin verilir,
+  başka hiçbir sunucuya istek atılamaz.
+-->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:8173 http://localhost:8173; form-action 'none'; base-uri 'none'">
 <title>TV Kanal Aracı</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -52,7 +59,7 @@
       <p class="muted">TV'nin listesini Türksat'ın resmî tablosuyla karşılaştır: hangi kanal eski frekansta,
         hangisi emekli uyduyu gösteriyor, hangi kanallar hiç bulunmamış.</p>
     </a>
-    <a class="hubcard" href="index.html">
+    <a class="hubcard" href="editor.html">
       <h3>Dosya editörü</h3>
       <p class="muted">USB ile aldığın <code>GlobalClone00001.TLL</code> dosyasını düzenle: sırala, adlandır,
         eski sıranı geri uygula, byte-sadık kaydet.</p>

@@ -2,7 +2,7 @@
 /**
  * Yerel statik sunucu — yalnız geliştirme/kullanım kolaylığı için.
  *
- * `web/index.html` dosyasını çift tıklayarak da açabilirsin; tek fark, file://
+ * `web/editor.html` dosyasını çift tıklayarak da açabilirsin; tek fark, file://
  * üzerinden `data/turksat-42e-latest.json` okunamadığı için "Türksat'a göre"
  * sütununun boş kalmasıdır. Sunucu yalnız 127.0.0.1'e bağlanır, dışarı açılmaz.
  */
@@ -26,13 +26,13 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     let p = decodeURIComponent(url.pathname);
-    // Kökten /web/ altına YÖNLENDİR (içerik sunma). Aksi hâlde index.html'in
+    // Kökten /web/ altına YÖNLENDİR (içerik sunma). Aksi hâlde sayfanın
     // göreli yolları /style.css gibi çözülür ve 404 olur.
     if (p === '/' || p === '/web') {
       res.writeHead(302, { Location: '/web/' }).end();
       return;
     }
-    if (p === '/web/') p = '/web/index.html';
+    if (p === '/web/') p = '/web/home.html';
 
     // Dizin dışına çıkışı engelle
     const full = normalize(resolve(ROOT, '.' + p));

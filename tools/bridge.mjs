@@ -131,7 +131,7 @@ const api = {
       surum: '0.2.0',
       lan: LAN,
       markalar: {
-        lg: { agdanOku: true, agdanYaz: false, not: 'SSAP okuma; yazma ucu yok (14 aday cihazda 404 döndü).' },
+        lg: { agdanOku: true, agdanYaz: false, not: 'SSAP okuma; yazma ucu yok (14 aday gerçek cihazda 404 — kanıt: data/ssap-uc-kesfi.json).' },
         samsung: { agdanOku: false, agdanYaz: false, not: 'Tizen ağ API\'si kanal listesi vermiyor; USB dosyası gerekir.' },
       },
     };

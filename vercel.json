@@ -5,7 +5,7 @@
   "redirects": [
     { "source": "/", "destination": "/web/home", "permanent": false },
     { "source": "/tv", "destination": "/web/tv", "permanent": false },
-    { "source": "/editor", "destination": "/web/index", "permanent": false }
+    { "source": "/editor", "destination": "/web/editor", "permanent": false }
   ],
   "headers": [
     {
