@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Sıfır dış istek: CDN yok, font yok, analytics yok. Dosyan cihazından çıkmaz.
+  connect-src 'self' → yalnız kendi kökümüzdeki Türksat veri dosyası okunabilir;
+  başka HİÇBİR sunucuya istek atılamaz. ('none' yapılırsa o dosya da okunamaz.)
+  Doğrulamak için: DevTools → Network sekmesini açıp kullan.
+-->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<title>LG Kanal Listesi Editörü</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <strong>LG Kanal Listesi Editörü</strong>
+    <span class="muted" data-i18n="tagline">dosyan cihazından çıkmaz</span>
+  </div>
+  <div class="bar-right">
+    <button id="btnLang" class="ghost" type="button">EN</button>
+  </div>
+</header>
+
+<!-- ───────────────────────────────────────────────── açılış ekranı -->
+<section id="welcome" class="pane">
+  <div id="drop" class="drop">
+    <p class="drop-title" data-i18n="dropTitle">GlobalClone00001.TLL dosyasını buraya sürükle</p>
+    <p class="muted" data-i18n="dropHint">veya seçmek için tıkla · dosya tarayıcının dışına çıkmaz</p>
+    <input type="file" id="file" accept=".TLL,.tll,.xml" hidden>
+  </div>
+
+  <div class="steps">
+    <h2 data-i18n="howTitle">Dosyayı TV'den nasıl alırım?</h2>
+    <ol>
+      <li data-i18n="how1"><b>Tüm Ayarlar → Kanallar → Kanal Kopyalama → TV'den USB'ye</b> (uydu modellerinde)</li>
+      <li data-i18n="how2">USB bellek <b>FAT32</b> olmalı, tercihen <b>16 GB veya altı</b>. NTFS/exFAT'te TV bozuk dosya yazıyor.</li>
+      <li data-i18n="how3">Dosyanın adını <b>değiştirme</b>. TV yalnız <code>GlobalClone00001.TLL</code> adını kabul ediyor.</li>
+      <li data-i18n="how4">Eski model (2014 öncesi) ise menüde bu seçenek yoktur; kumandada Ayarlar'a basılı tutup <code>1105</code> girilir.</li>
+    </ol>
+    <p class="note" data-i18n="howNote">
+      Kurulumda operatör listesi (ör. "Türksat TKGS → Sabit") seçilmişse liste ön-sıralı gelir ve
+      elle sıralama kilitlenir. Sıralama yapabilmek için <b>Esnek</b> modu ya da operatörsüz tam tarama gerekir.
+    </p>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────────── editör -->
+<section id="editor" class="pane" hidden>
+
+  <div class="fileinfo">
+    <div>
+      <span id="fmtBadge" class="badge"></span>
+      <b id="modelName">—</b>
+      <span class="muted" id="fileMeta"></span>
+    </div>
+    <div class="fileinfo-actions">
+      <button id="btnOriginal" class="ghost" type="button" data-i18n="btnOriginal">Orijinali indir</button>
+      <button id="btnClose" class="ghost" type="button" data-i18n="btnClose">Kapat</button>
+    </div>
+  </div>
+
+  <div id="warnBox" class="warn" hidden></div>
+
+  <div class="toolbar">
+    <input id="search" type="search" data-i18n-ph="searchPh" placeholder="Kanal ara…">
+    <select id="filter">
+      <option value="all" data-i18n="fAll">Tümü</option>
+      <option value="tv" data-i18n="fTv">Sadece TV</option>
+      <option value="radio" data-i18n="fRadio">Sadece radyo</option>
+      <option value="fta" data-i18n="fFta">Şifresiz</option>
+      <option value="scrambled" data-i18n="fScr">Şifreli</option>
+      <option value="changed" data-i18n="fChanged">Değişenler</option>
+    </select>
+    <span class="spacer"></span>
+    <button id="btnUndo" class="ghost" type="button" disabled>↶ <span data-i18n="undo">Geri al</span></button>
+    <button id="btnRedo" class="ghost" type="button" disabled>↷ <span data-i18n="redo">İleri al</span></button>
+    <button id="btnRestore" class="primary" type="button" data-i18n="btnRestore">Eski sıramı uygula…</button>
+  </div>
+
+  <div class="tablewrap">
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th class="num" data-i18n="thNo">No</th>
+          <th class="num" title="TV menüsünde görünen numara bu olabilir">minor</th>
+          <th data-i18n="thName">Kanal adı</th>
+          <th data-i18n="thType">Tür</th>
+          <th class="num" data-i18n="thFreq">Frekans</th>
+          <th data-i18n="thSat" >Uydu</th>
+          <th data-i18n="thTurksat">Türksat'a göre</th>
+          <th data-i18n="thFlags">Durum</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <p id="empty" class="muted center" hidden data-i18n="noRows">Eşleşen kanal yok.</p>
+  </div>
+
+  <div class="savebar">
+    <div id="saveStat" class="muted"></div>
+    <button id="btnSave" class="primary big" type="button" data-i18n="btnSave">Kaydet (.TLL indir)</button>
+  </div>
+</section>
+
+<!-- ───────────────────────────────────────────────── sıra geri yükleme -->
+<div id="restoreModal" class="modal" hidden>
+  <div class="modal-box">
+    <h2 data-i18n="rTitle">Eski sıramı yeni listeye uygula</h2>
+    <p class="muted" data-i18n="rIntro">
+      Yeniden tarama sıralamanı sıfırladıysa, eski sıranı buraya yükle. Kanallar kimlik (SVCID/TSID/ONID),
+      ad ve PID üzerinden eşleştirilir; frekans yalnız son çare olarak ve ±2 MHz toleransla kullanılır.
+    </p>
+
+    <div class="rsource">
+      <label class="filebtn">
+        <input type="file" id="recipeFile" accept=".json,.csv" hidden>
+        <span data-i18n="rPick">Dosya seç (TV dökümü / sıra tarifi / CSV)</span>
+      </label>
+      <span class="muted" id="recipeName"></span>
+    </div>
+
+    <div class="hint">
+      <b data-i18n="rHowTitle">Eski sıran nereden gelir?</b>
+      <ul>
+        <li data-i18n="rHow1"><code>node tools/lgtv-read.mjs &lt;TV-IP&gt;</code> ile TV'den WiFi üzerinden okunan JSON</li>
+        <li data-i18n="rHow2">Daha önce bu araçtan indirdiğin <b>sıra tarifi</b> (.json)</li>
+        <li data-i18n="rHow3">Eski bir <code>.TLL</code> dosyasını açıp "sıra tarifi indir" ile ürettiğin dosya</li>
+        <li data-i18n="rHow4">CSV: <code>no;ad</code> sütunlu basit tablo</li>
+      </ul>
+    </div>
+
+    <div id="matchReport" hidden></div>
+
+    <div class="modal-actions">
+      <button id="btnRecipeExport" class="ghost" type="button" data-i18n="rExport">Bu listenin sıra tarifini indir</button>
+      <span class="spacer"></span>
+      <button id="btnRestoreCancel" class="ghost" type="button" data-i18n="cancel">Vazgeç</button>
+      <button id="btnRestoreApply" class="primary" type="button" disabled data-i18n="rApply">Sırayı uygula</button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────── ön-uçuş -->
+<div id="preflightModal" class="modal" hidden>
+  <div class="modal-box">
+    <h2 data-i18n="pTitle">Kaydetmeden önce</h2>
+    <div id="preflightList"></div>
+    <div class="modal-actions">
+      <button id="btnPreCancel" class="ghost" type="button" data-i18n="cancel">Vazgeç</button>
+      <button id="btnPreOk" class="primary" type="button" data-i18n="pDownload">İndir</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script src="lib/globalclone.js"></script>
+<script src="lib/order.js"></script>
+<script src="lib/i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
