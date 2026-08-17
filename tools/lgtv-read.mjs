@@ -10,6 +10,7 @@
  *   node tools/lgtv-read.mjs 192.168.1.42 --out data/salon.json
  *   node tools/lgtv-read.mjs 192.168.1.42 --probe      # belgelenmemiş uçları YOKLA (salt okunur)
  *   node tools/lgtv-read.mjs --discover                # ağdaki TV'leri SSDP ile ara
+ *   node tools/lgtv-read.mjs 192.168.1.42 --insecure   # LG olmayan sertifikayı da kabul et
  *
  * İlk bağlantıda TV ekranında bir eşleştirme onayı çıkar; kumandayla kabul et.
  * Kabul edilince alınan client-key `.lgtv-clients.json` dosyasına yazılır ve
@@ -20,13 +21,20 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dgram from 'node:dgram';
+import { connectAuto, describeCertificate } from './ws-client.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const HANDSHAKE = JSON.parse(readFileSync(resolve(HERE, 'ssap-handshake.json'), 'utf8'));
 const KEYSTORE = resolve(ROOT, '.lgtv-clients.json');
 
-const PORT_WS = 3000; // düz ws — wss (3001) kendinden imzalı sertifika kullanır
+/**
+ * Bağlantı: önce wss://<ip>:3001, olmazsa ws://<ip>:3000.
+ * Yeni webOS modellerinde 3000 portu TCP bağlantısını kabul edip HTTP isteğinde
+ * bağlantıyı SIFIRLIYOR (ECONNRESET) — yani "port açık" olması ws'nin çalıştığı
+ * anlamına gelmiyor. Gerçek uç 3001/TLS'tir; sertifika LG'nin kendi cihaz
+ * sertifikasıdır ve adı üzerinden doğrulanır (bkz. ws-client.mjs).
+ */
 
 /** Salt okunur uçlar. Bunlar cihazda hiçbir şey değiştirmez. */
 const READ_ENDPOINTS = {
@@ -128,27 +136,18 @@ class Ssap {
     this.ws = null;
   }
 
-  connect(timeoutMs = 8000) {
-    return new Promise((ok, fail) => {
-      const url = `ws://${this.ip}:${PORT_WS}`;
-      const ws = new WebSocket(url);
-      this.ws = ws;
-      const timer = setTimeout(() => {
-        try { ws.close(); } catch {}
-        fail(new Error(`Bağlanılamadı: ${url} (zaman aşımı). TV açık mı, IP doğru mu?`));
-      }, timeoutMs);
-
-      ws.onopen = () => { clearTimeout(timer); ok(); };
-      ws.onerror = () => {
-        clearTimeout(timer);
-        fail(new Error(`Bağlanılamadı: ${url}. TV açık ve aynı ağda olmalı.`));
-      };
-      ws.onclose = () => {
-        for (const { fail: f } of this.pending.values()) f(new Error('Bağlantı kapandı'));
-        this.pending.clear();
-      };
-      ws.onmessage = (ev) => this._onMessage(ev.data);
+  async connect({ timeoutMs = 8000, allowAnyCertificate = false } = {}) {
+    const { conn, certificate, url } = await connectAuto(this.ip, { timeoutMs, allowAnyCertificate });
+    this.ws = conn;
+    this.url = url;
+    this.certificate = certificate;
+    conn.on('message', (data) => this._onMessage(data));
+    conn.on('close', () => {
+      for (const { fail: f } of this.pending.values()) f(new Error('Bağlantı kapandı'));
+      this.pending.clear();
     });
+    conn.on('error', () => { /* kapanış zaten bekleyenleri düşürüyor */ });
+    return { url, certificate };
   }
 
   _onMessage(data) {
@@ -261,9 +260,10 @@ async function main() {
   }
 
   const tv = new Ssap(host);
-  log(`→ ${host}:${PORT_WS} bağlanılıyor...`);
-  await tv.connect();
-  log('  bağlandı.');
+  log(`→ ${host} bağlanılıyor...`);
+  const { url, certificate } = await tv.connect({ allowAnyCertificate: flag('--insecure') });
+  log(`  bağlandı: ${url}`);
+  if (certificate) log(`  sertifika: ${describeCertificate(certificate)}`);
 
   const keys = loadKeys();
   const existing = keys[host];
@@ -338,6 +338,7 @@ main().catch((e) => {
   console.error('\nİpuçları:');
   console.error('  • TV açık ve bilgisayarla aynı ağda olmalı (uyku modunda SSAP kapalıdır).');
   console.error('  • Ayarlar → Bağlantı → "Mobil TV Açık" / "LG Connect Apps" açık olmalı.');
+  console.error('  • Eşleştirme onayı TV ekranında çıkar; kumandayla kabul edilmezse zaman aşımına düşer.');
   console.error('  • IP\'yi bulmak için: node tools/lgtv-read.mjs --discover');
   process.exit(1);
 });
