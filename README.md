@@ -156,7 +156,37 @@ LG format bilgisi [ChanSort](https://github.com/PredatH0r/ChanSort) (GPLv3) ince
 **öğrenilmiş**, kodu veya offset tabloları **kopyalanmamıştır**; bu depodaki tüm uygulama
 sıfırdan yazılmıştır.
 
+## Geçiş günü saha bilgisi (16 Ağustos 2026)
+
+Kullanıcıların ilk gün paylaştığı çözümler ve sektör derneğinin açıklaması
+[NOTLAR-saha-16agustos2026.md](NOTLAR-saha-16agustos2026.md) dosyasında derlendi. Öne çıkanlar:
+
+**Tarama parametreleri** (Türksat resmî duyurusuyla birebir):
+
+| Frekans | Pol | Symbol Rate | FEC | Kapsama |
+|---|---|---|---|---|
+| 12380 MHz | V | 27500 | 3/4 | Türkiye + Avrupa |
+| 12423 MHz | H | 30000 | 3/4 | Türkiye + Orta Asya |
+
+**Şebeke/ağ (NIT) araması mutlaka açık olmalı** — kapalıysa yalnız o transponderin kanalları gelir.
+
+**TKGS sırası önemli:** *Çalışma Şekli → otomatik* ile listeyi doldur, sonra *esnek*'e al —
+ancak o zaman sıralama yapabilirsin. "Sabit" modda liste kilitlidir.
+
+**Hiç kanal gelmiyorsa** sorun frekans değil kurulum olabilir: LNB **9750/10600**, ve alıcıda
+varsayılan gelen **"tek kablo" yerine DiSEqC 1.0** seçilmeli.
+
+**Ses gelmiyorsa** o kanalın **A-PID** değeri Türksat tablosundan alınıp düzeltilmeli — bu araç
+tabloyu A-PID sütunuyla birlikte çektiği için uyuşmazlığı otomatik gösterebilir.
+
+**TUYAD** (sektör derneği, 16.08.2026): *"özellikle bazı Samsung Smart TV ve LG modellerinde TKGS
+verilerinin otomatik işlenmesinde aksaklıklar"* yaşandığını, kalıcı çözümün üreticinin
+firmware güncellemesi olduğunu açıkladı —
+[CNN Türk](https://www.cnnturk.com/turkiye/televizyonda-kanal-ve-frekans-sorunu-nasil-cozulur-iste-adim-adim-yapilmasi-gerekenler-3455299).
+Bu araç, o güncelleme gelene kadarki boşluğu doldurur.
+
 ## İlgili
 
 - [scm-editor_tara.md](scm-editor_tara.md) — bu projenin dayandığı geliştirme tarama raporu
   (rakip analizi, kullanıcı şikayeti temaları, ICE puanlı öneriler, yol haritası)
+- [NOTLAR-saha-16agustos2026.md](NOTLAR-saha-16agustos2026.md) — geçiş günü saha notları ve kaynakları
