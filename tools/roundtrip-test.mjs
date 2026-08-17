@@ -300,6 +300,39 @@ t('sıra motoru: SVCID+TSID aynı ama ONID farklıysa yanlış eşleşme yapmaz'
   ok(res.matched.length === 0 || res.matched[0].method !== 'id', 'yanlış tam-kimlik eşleşmesi');
 });
 
+t('sıra motoru: idx alanı olmayan TV dökümünde de eşleşir', () => {
+  // Gerçek hata: SSAP dökümünde idx yoktu; usedNew\'e undefined girince ilk
+  // eşleşmeden sonra 609 kanaldan yalnız 1\'i eşleşiyordu.
+  const yeni = [
+    { name: 'TRT1 HD', SVCID: 1, TSID: 1, ONID: null, frequency: 11794, videoPid: null, audioPid: null },
+    { name: 'KANAL D HD', SVCID: 2, TSID: 2, ONID: null, frequency: 12245, videoPid: null, audioPid: null },
+    { name: 'SHOW HD', SVCID: 3, TSID: 3, ONID: null, frequency: 12303, videoPid: null, audioPid: null },
+  ];
+  const eski = [
+    { name: 'TRT1 HD', number: 1, SVCID: 9, TSID: 9, ONID: null, frequency: 11054, videoPid: null, audioPid: null },
+    { name: 'KANAL D HD', number: 2, SVCID: 8, TSID: 8, ONID: null, frequency: 12245, videoPid: null, audioPid: null },
+    { name: 'SHOW HD', number: 3, SVCID: 7, TSID: 7, ONID: null, frequency: 12209, videoPid: null, audioPid: null },
+  ];
+  const res = Order.match(eski, yeni);
+  eq(res.matched.length, 3, 'idx yokken eşleşme çöktü');
+  eq(res.onlyNew.length, 0);
+});
+
+t('sıra motoru: göç sonrası kimlikler değişse bile isimle kurtarır', () => {
+  // Türksat geçişinde TSID/ONID değişti; kimlik turu tutmaz, isim turu tutmalı.
+  const yeni = Array.from({ length: 50 }, (_, i) => ({
+    name: 'KANAL ' + i, SVCID: 5000 + i, TSID: 77, ONID: null, frequency: 12000 + i,
+    videoPid: null, audioPid: null,
+  }));
+  const eski = Array.from({ length: 50 }, (_, i) => ({
+    name: 'KANAL ' + i, number: 50 - i, SVCID: 1000 + i, TSID: 11, ONID: null,
+    frequency: 11000 + i, videoPid: null, audioPid: null,
+  }));
+  const res = Order.match(eski, yeni);
+  eq(res.matched.length, 50, 'isim turu kurtarmadı');
+  ok(res.matched.every((m) => m.method === 'name'), 'beklenen yöntem isim');
+});
+
 // ═══════════════════════════════════════════════════════════════════ rapor
 
 const w = Math.max(...results.map((r) => r[1].length));

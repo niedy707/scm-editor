@@ -149,7 +149,7 @@ export class LgSsap {
  * için birden çok aday denenir; hiçbiri tutmazsa alan null kalır ve ham kayıt
  * `_raw` içinde saklanır (passthrough ilkesi).
  */
-export function normalizeChannel(c) {
+export function normalizeChannel(c, idx) {
   const pick = (...names) => {
     for (const n of names) if (c[n] !== undefined && c[n] !== null && c[n] !== '') return c[n];
     return null;
@@ -157,6 +157,7 @@ export function normalizeChannel(c) {
   const num = (v) => (v === null ? null : Number(v));
   const isRadio = c.Radio === true || /radio/i.test(String(c.channelType || ''));
   return {
+    idx,
     channelId: pick('channelId', 'channelID'),
     number: num(pick('majorNumber', 'channelNumber', 'displayChannelNumber')),
     majorNumber: num(pick('majorNumber')),
@@ -219,7 +220,7 @@ export async function readTv(ip, { clientKey = null, probe = false, allowAnyCert
   }
 
   const raw = sonuc.channelList?.channelList || sonuc.channelList?.channels || [];
-  sonuc.kanallar = raw.map(normalizeChannel);
+  sonuc.kanallar = raw.map((c, i) => normalizeChannel(c, i));
   sonuc.alanKapsami = fieldCoverage(sonuc.kanallar);
   sonuc.model = sonuc.systemInfo?.modelName || sonuc.swInfo?.model_name || null;
   sonuc.firmware = sonuc.swInfo?.major_ver ? `${sonuc.swInfo.major_ver}.${sonuc.swInfo.minor_ver}` : null;

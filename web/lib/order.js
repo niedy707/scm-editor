@@ -24,7 +24,16 @@
   'use strict';
 
   const FREQ_TOLERANCE = 2; // MHz
+  const RADIO_BIT = 0x4000;
   const MAX_NUMBER = 0x4000 - 1; // 0x4000 biti radyo göstergesi, numara alt 14 bit
+
+  /**
+   * Görünen kanal numarası. `majorNumber`'ın 0x4000 biti "bu bir radyo" demektir,
+   * numaranın parçası DEĞİLDİR. Maskelemeden karşılaştırınca radyo kanalları
+   * 17255 ↔ 871 gibi görünüp "numarası değişmiş" sanılıyor — gerçek veride
+   * 213 kanal yanlışlıkla "değişti" sayılmıştı. Numara her zaman sınırda maskelenir.
+   */
+  const displayNumber = (v) => (Number(v) || 0) & ~RADIO_BIT;
 
   /** Karşılaştırma için ad normalleştirme: Türkçe karakterler ve süsler atılır. */
   function normName(s) {
@@ -64,7 +73,15 @@
    * @param {Array} oldList  eski liste — {name, number, SVCID, TSID, ONID, frequency, videoPid, audioPid}
    * @param {Array} newList  yeni liste — parse edilmiş kanallar (idx alanı olmalı)
    */
-  function match(oldList, newList) {
+  function match(oldList, newListRaw) {
+    /**
+     * `idx` savunması. Ayrıştırılmış .TLL kanalları bu alanı taşır ama TV'den
+     * SSAP ile okunan kayıtlar taşımaz. Eksikse `usedNew` kümesine `undefined`
+     * eklenir ve ilk eşleşmeden sonra HER kanal "zaten kullanıldı" sayılır —
+     * gerçek veride 609 kanaldan yalnız 1'i eşleşmişti. Eksikse konumdan üretilir.
+     */
+    const newList = newListRaw.map((c, i) => (c.idx == null ? { ...c, idx: i } : c));
+
     const usedNew = new Set();
     const usedOld = new Set();
     const matched = [];
@@ -76,7 +93,7 @@
         oldIdx: oi,
         idx: nc.idx,
         method,
-        oldNumber: Number(oldList[oi].number),
+        oldNumber: displayNumber(oldList[oi].number),
         oldName: oldList[oi].name,
         newName: nc.name,
       });
@@ -176,7 +193,7 @@
           idx: c.idx,
           oldName: o.name,
           newName: c.name,
-          oldNumber: Number(o.number),
+          oldNumber: displayNumber(o.number),
         });
       }
     }
@@ -198,7 +215,7 @@
     const entries = newList.map((c) => ({
       idx: c.idx,
       target: target.has(c.idx) ? Number(target.get(c.idx)) : null,
-      current: Number(c.number) || 0,
+      current: displayNumber(c.number),
       isNew: !target.has(c.idx),
     }));
 
@@ -238,7 +255,8 @@
       olusturma: new Date().toISOString(),
       kanallar: channels.map((c) => ({
         name: c.name,
-        number: c.number,
+        number: displayNumber(c.number),
+        isRadio: !!c.isRadio,
         SVCID: c.SVCID ?? null,
         TSID: c.TSID ?? null,
         ONID: c.ONID ?? null,
@@ -266,5 +284,5 @@
     }));
   }
 
-  return { match, buildPlan, toRecipe, fromTvDump, normName, nameRoot, FREQ_TOLERANCE, MAX_NUMBER };
+  return { match, buildPlan, toRecipe, fromTvDump, normName, nameRoot, displayNumber, FREQ_TOLERANCE, MAX_NUMBER, RADIO_BIT };
 });

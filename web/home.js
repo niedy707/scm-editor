@@ -34,11 +34,17 @@
     setTimeout(() => el.remove(), 6000);
   }
 
-  async function api(ad, body) {
+  /**
+   * Zaman aşımı ZORUNLU: HTTPS bir sayfadan `http://127.0.0.1` adresine yapılan
+   * istek bazı tarayıcılarda hata vermeden ASILI KALIYOR. Süre sınırı olmazsa
+   * arayüz "köprü aranıyor…" yazısında sonsuza kadar takılır.
+   */
+  async function api(ad, body, { timeoutMs = 8000 } = {}) {
     const r = await fetch(`${BASE}/api/${ad}`, {
       method: body ? 'POST' : 'GET',
       headers: { 'Content-Type': 'application/json', ...(TOKEN ? { 'X-Bridge-Token': TOKEN } : {}) },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.hata || `HTTP ${r.status}`);

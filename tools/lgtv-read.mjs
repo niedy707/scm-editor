@@ -1,91 +1,43 @@
 #!/usr/bin/env node
 /**
- * Adım 1 — Ağdan oku (temassız).
+ * Adım 1 — Ağdan oku (temassız), komut satırı arayüzü.
  *
- * LG webOS TV'ye WiFi üzerinden SSAP (WebSocket) ile bağlanır, kanal listesini
- * çeker ve JSON olarak kaydeder. Hiçbir şey YAZMAZ.
+ * Tüm ağ ve ayrıştırma mantığı `tools/net/lg-ssap.mjs` içindedir; bu dosya
+ * yalnız ince bir kabuktur. (Daha önce bu dosyanın kendi normalleştirici
+ * kopyası vardı; modül çıkarıldıktan sonra ikisi birbirinden ayrı düştü ve
+ * `isRadio` alanı yalnız birinde üretildiği için radyo kanalları sessizce
+ * "radyo değil" göründü. Tekrarı kaldırmak bu sınıf hatayı bitirir.)
  *
  * Kullanım:
  *   node tools/lgtv-read.mjs 192.168.1.42
  *   node tools/lgtv-read.mjs 192.168.1.42 --out data/salon.json
  *   node tools/lgtv-read.mjs 192.168.1.42 --probe      # belgelenmemiş uçları YOKLA (salt okunur)
- *   node tools/lgtv-read.mjs --discover                # ağdaki TV'leri SSDP ile ara
+ *   node tools/lgtv-read.mjs --discover                # ağdaki TV'leri ara
  *   node tools/lgtv-read.mjs 192.168.1.42 --insecure   # LG olmayan sertifikayı da kabul et
  *
- * İlk bağlantıda TV ekranında bir eşleştirme onayı çıkar; kumandayla kabul et.
- * Kabul edilince alınan client-key `.lgtv-clients.json` dosyasına yazılır ve
- * sonraki çalıştırmalarda TV bir daha sormaz.
+ * İlk bağlantıda TV ekranında eşleştirme onayı çıkar; kumandayla kabul et.
+ * Alınan anahtar `.lgtv-clients.json` dosyasına yazılır, TV bir daha sormaz.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import dgram from 'node:dgram';
-import { connectAuto, describeCertificate } from './ws-client.mjs';
+import { readTv } from './net/lg-ssap.mjs';
+import { scanNetwork } from './net/discover.mjs';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(HERE, '..');
-const HANDSHAKE = JSON.parse(readFileSync(resolve(HERE, 'ssap-handshake.json'), 'utf8'));
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const KEYSTORE = resolve(ROOT, '.lgtv-clients.json');
 
-/**
- * Bağlantı: önce wss://<ip>:3001, olmazsa ws://<ip>:3000.
- * Yeni webOS modellerinde 3000 portu TCP bağlantısını kabul edip HTTP isteğinde
- * bağlantıyı SIFIRLIYOR (ECONNRESET) — yani "port açık" olması ws'nin çalıştığı
- * anlamına gelmiyor. Gerçek uç 3001/TLS'tir; sertifika LG'nin kendi cihaz
- * sertifikasıdır ve adı üzerinden doğrulanır (bkz. ws-client.mjs).
- */
-
-/** Salt okunur uçlar. Bunlar cihazda hiçbir şey değiştirmez. */
-const READ_ENDPOINTS = {
-  channelList: 'ssap://tv/getChannelList',
-  currentChannel: 'ssap://tv/getCurrentChannel',
-  systemInfo: 'ssap://system/getSystemInfo',
-  swInfo: 'ssap://com.webos.service.update/getCurrentSWInformation',
-};
-
-/**
- * Belgelenmemiş ama eşleştirme manifestinde İZNİ bulunan uçlar.
- * Manifest şu yazma izinlerini ilan ediyor: SET_CHANNEL_SKIP, RELEASE_CHANNEL_SKIP,
- * CONTROL_CHANNEL_BLOCK, DELETE_SELECT_CHANNEL, CONTROL_CHANNEL_GROUP,
- * CONTROL_FAVORITE_GROUP, SCAN_TV_CHANNELS.
- *
- * Aşağıdakilerin HEPSİ "get" biçimindedir — yani var olup olmadıklarını
- * öğrenmek cihazda hiçbir değişiklik yapmaz. Yazan uçlar bilerek YOK.
- */
-const PROBE_ENDPOINTS = [
-  'ssap://tv/getChannelProgramInfo',
-  'ssap://tv/getChannelCurrentProgramInfo',
-  'ssap://tv/getFavoriteChannelList',
-  'ssap://tv/getChannelGroupList',
-  'ssap://tv/getSkipChannelList',
-  'ssap://tv/getBlockChannelList',
-  'ssap://tv/getSatelliteSettings',
-  'ssap://tv/getTunerInfo',
-  'ssap://tv/getChannelScanStatus',
-  'ssap://settings/getSystemSettings',
-];
-
-// ---------------------------------------------------------------- yardımcılar
-
 const args = process.argv.slice(2);
-const flag = (name) => args.includes(name);
-const opt = (name, dflt) => {
-  const i = args.indexOf(name);
-  return i >= 0 && args[i + 1] ? args[i + 1] : dflt;
-};
-const host = args.find((a) => !a.startsWith('-') && /^[\w.-]+$/.test(a) && args[args.indexOf(a) - 1] !== '--out');
+const flag = (n) => args.includes(n);
+const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
+const host = args.find((a, i) => !a.startsWith('-') && /^[\d.]+$/.test(a) && args[i - 1] !== '--out');
 
 const log = (...a) => console.log(...a);
-const warn = (...a) => console.warn(...a);
 
 function loadKeys() {
   if (!existsSync(KEYSTORE)) return {};
-  try {
-    return JSON.parse(readFileSync(KEYSTORE, 'utf8'));
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(readFileSync(KEYSTORE, 'utf8')); } catch { return {}; }
 }
 function saveKey(ip, key) {
   const all = loadKeys();
@@ -93,244 +45,67 @@ function saveKey(ip, key) {
   writeFileSync(KEYSTORE, JSON.stringify(all, null, 2) + '\n');
 }
 
-// ------------------------------------------------------------ SSDP keşif
-
-async function discover(timeoutMs = 4000) {
-  const MSG = Buffer.from(
-    [
-      'M-SEARCH * HTTP/1.1',
-      'HOST: 239.255.255.250:1900',
-      'MAN: "ssdp:discover"',
-      'MX: 2',
-      'ST: urn:lge-com:service:webos-second-screen:1',
-      '',
-      '',
-    ].join('\r\n')
-  );
-  return new Promise((done) => {
-    const found = new Map();
-    const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-    sock.on('message', (buf, rinfo) => {
-      const txt = buf.toString();
-      if (/webos|LG/i.test(txt)) found.set(rinfo.address, txt.split('\r\n')[0]);
-    });
-    sock.on('error', () => {});
-    sock.bind(() => {
-      sock.setBroadcast(true);
-      sock.send(MSG, 1900, '239.255.255.250');
-    });
-    setTimeout(() => {
-      try { sock.close(); } catch {}
-      done([...found.keys()]);
-    }, timeoutMs);
-  });
-}
-
-// ------------------------------------------------------------ SSAP istemcisi
-
-class Ssap {
-  constructor(ip) {
-    this.ip = ip;
-    this.seq = 0;
-    this.pending = new Map();
-    this.ws = null;
-  }
-
-  async connect({ timeoutMs = 8000, allowAnyCertificate = false } = {}) {
-    const { conn, certificate, url } = await connectAuto(this.ip, { timeoutMs, allowAnyCertificate });
-    this.ws = conn;
-    this.url = url;
-    this.certificate = certificate;
-    conn.on('message', (data) => this._onMessage(data));
-    conn.on('close', () => {
-      for (const { fail: f } of this.pending.values()) f(new Error('Bağlantı kapandı'));
-      this.pending.clear();
-    });
-    conn.on('error', () => { /* kapanış zaten bekleyenleri düşürüyor */ });
-    return { url, certificate };
-  }
-
-  _onMessage(data) {
-    let msg;
-    try { msg = JSON.parse(data); } catch { return; }
-    const waiter = this.pending.get(msg.id);
-    if (!waiter) return;
-    if (msg.type === 'error') {
-      this.pending.delete(msg.id);
-      waiter.fail(new Error(msg.error || 'bilinmeyen hata'));
-      return;
-    }
-    // register akışında önce "registered" gelmeden ara mesaj gelebilir
-    if (waiter.until && msg.type !== waiter.until) return;
-    this.pending.delete(msg.id);
-    waiter.ok(msg.payload ?? {});
-  }
-
-  _send(obj, { until, timeoutMs = 15000 } = {}) {
-    const id = obj.id || `req_${++this.seq}`;
-    obj.id = id;
-    return new Promise((ok, fail) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        fail(new Error('yanıt gelmedi (zaman aşımı)'));
-      }, timeoutMs);
-      this.pending.set(id, {
-        until,
-        ok: (v) => { clearTimeout(timer); ok(v); },
-        fail: (e) => { clearTimeout(timer); fail(e); },
-      });
-      this.ws.send(JSON.stringify(obj));
-    });
-  }
-
-  async register(clientKey) {
-    const payload = structuredClone(HANDSHAKE);
-    if (clientKey) payload['client-key'] = clientKey;
-    const res = await this._send(
-      { type: 'register', payload },
-      { until: 'registered', timeoutMs: 90000 }
-    );
-    return res['client-key'];
-  }
-
-  request(uri, payload) {
-    return this._send({ type: 'request', uri, ...(payload ? { payload } : {}) });
-  }
-
-  close() { try { this.ws.close(); } catch {} }
-}
-
-// ------------------------------------------------------------ normalleştirme
-
-/**
- * TV'nin döndürdüğü ham kanal kaydını, editörün anladığı sade biçime çevirir.
- * Alan adları modelden modele değişebildiği için birden çok aday isim denenir;
- * hiçbiri tutmazsa alan `null` kalır ve ham kayıt `_raw` içinde saklanır.
- */
-function normalizeChannel(c) {
-  const pick = (...names) => {
-    for (const n of names) if (c[n] !== undefined && c[n] !== null && c[n] !== '') return c[n];
-    return null;
-  };
-  const num = (v) => (v === null ? null : Number(v));
-  return {
-    channelId: pick('channelId', 'channelID'),
-    number: num(pick('channelNumber', 'majorNumber', 'displayChannelNumber')),
-    majorNumber: num(pick('majorNumber')),
-    minorNumber: num(pick('minorNumber')),
-    name: pick('channelName', 'channelNameAlias'),
-    type: pick('channelTypeName', 'channelType'),
-    physicalNumber: num(pick('physicalNumber')),
-    frequency: num(pick('frequency', 'Frequency')),
-    satelliteName: pick('satelliteName', 'satelliteLcn'),
-    SVCID: num(pick('SVCID', 'serviceId', 'programNum')),
-    TSID: num(pick('TSID', 'transportStreamId')),
-    ONID: num(pick('ONID', 'originalNetworkId')),
-    scrambled: pick('scrambled', 'CASystemIDList') !== null ? Boolean(c.scrambled) : null,
-    skipped: c.skipped ?? null,
-    locked: c.locked ?? null,
-    favorite: c.favoriteGroup ?? c.Favorite ?? null,
-    _raw: c,
-  };
-}
-
-/** Hangi tuner alanlarının gerçekten geldiğini raporlar (mimari kararı bu belirler). */
-function fieldCoverage(rows) {
-  const keys = ['SVCID', 'TSID', 'ONID', 'frequency', 'majorNumber', 'minorNumber', 'physicalNumber', 'satelliteName'];
-  const out = {};
-  for (const k of keys) out[k] = rows.filter((r) => r[k] !== null && r[k] !== undefined).length;
-  return out;
-}
-
-// ------------------------------------------------------------------- ana akış
-
 async function main() {
   if (flag('--discover') || !host) {
-    if (!host) log('IP verilmedi — ağda LG TV aranıyor (SSDP, ~4 sn)...\n');
-    const ips = await discover();
-    if (!ips.length) {
-      warn('Ağda LG TV bulunamadı.');
-      warn('TV\'nin IP\'sini şuradan bakabilirsin: Ayarlar → Bağlantı → Ağ → Wi-Fi Bağlantısı → Gelişmiş');
-      warn('Sonra: node tools/lgtv-read.mjs <IP>');
-      process.exit(ips.length ? 0 : 1);
+    if (!host) log('IP verilmedi — ağ taranıyor…\n');
+    const cihazlar = await scanNetwork();
+    if (!cihazlar.length) {
+      console.error('Ağda televizyon bulunamadı.');
+      console.error('TV açık ve aynı ağda olmalı; uyku modunda ağ servisleri kapalıdır.');
+      process.exit(1);
     }
-    log('Bulunan TV(ler):');
-    for (const ip of ips) log('  ' + ip);
-    if (!host) { log('\nÇalıştır: node tools/lgtv-read.mjs ' + ips[0]); return; }
+    log('Bulunan cihazlar:');
+    for (const d of cihazlar) {
+      log(`  ${d.ip.padEnd(15)} ${String(d.marka).padEnd(9)} ${d.okunabilir ? 'okunabilir' : 'ağdan okunamıyor'}${d.not ? ' · ' + d.not : ''}`);
+    }
+    if (!host) {
+      const ilk = cihazlar.find((d) => d.okunabilir);
+      if (ilk) log(`\nÇalıştır: node tools/lgtv-read.mjs ${ilk.ip}`);
+      return;
+    }
   }
-
-  const tv = new Ssap(host);
-  log(`→ ${host} bağlanılıyor...`);
-  const { url, certificate } = await tv.connect({ allowAnyCertificate: flag('--insecure') });
-  log(`  bağlandı: ${url}`);
-  if (certificate) log(`  sertifika: ${describeCertificate(certificate)}`);
 
   const keys = loadKeys();
-  const existing = keys[host];
-  if (!existing) {
+  const vardi = !!keys[host];
+  if (!vardi) {
     log('\n  ⚠️  TV EKRANINDA EŞLEŞTİRME ONAYI ÇIKACAK — kumandayla "Kabul Et" de.');
-    log('     (bu bir kereliktir, sonra bir daha sormaz)\n');
-  }
-  const clientKey = await tv.register(existing);
-  if (clientKey && clientKey !== existing) {
-    saveKey(host, clientKey);
-    log('  eşleştirildi, anahtar .lgtv-clients.json dosyasına kaydedildi.');
-  } else {
-    log('  kayıtlı anahtarla eşleşti.');
+    log('     (bu bir kereliktir)\n');
   }
 
-  const result = { tv: host, okunmaZamani: new Date().toISOString(), kaynak: 'ssap' };
+  const { sonuc, clientKey } = await readTv(host, {
+    clientKey: keys[host] || null,
+    probe: flag('--probe'),
+    allowAnyCertificate: flag('--insecure'),
+    onStatus: (s) => {
+      if (s.asama === 'baglaniyor') log(`→ ${s.ip} bağlanılıyor…`);
+      if (s.asama === 'baglandi') { log(`  bağlandı: ${s.url}`); if (s.sertifika) log(`  sertifika: ${s.sertifika}`); }
+      if (s.asama === 'eslesti') log('  eşleşti.');
+      if (s.asama === 'uc-ok') log(`  ✓ ${s.uri}`);
+      if (s.asama === 'uc-hata') console.warn(`  ✗ ${s.uri} → ${s.hata}`);
+    },
+  });
+  if (clientKey && clientKey !== keys[host]) { saveKey(host, clientKey); log('  anahtar kaydedildi.'); }
 
-  for (const [key, uri] of Object.entries(READ_ENDPOINTS)) {
-    try {
-      const p = await tv.request(uri);
-      result[key] = p;
-      log(`  ✓ ${uri}`);
-    } catch (e) {
-      result[key] = { _hata: String(e.message || e) };
-      warn(`  ✗ ${uri} → ${e.message || e}`);
-    }
+  if (sonuc.kesif) {
+    log('\n  Belgelenmemiş uçlar (hepsi salt okunur):');
+    for (const [uri, r] of Object.entries(sonuc.kesif)) log(`    ${r.var ? '✓ VAR  ' : '·  yok '} ${uri}`);
   }
-
-  const rawList = result.channelList?.channelList || result.channelList?.channels || [];
-  const channels = rawList.map(normalizeChannel);
-  result.kanallar = channels;
-  result.alanKapsami = fieldCoverage(channels);
-
-  if (flag('--probe')) {
-    log('\n  Belgelenmemiş uçlar yoklanıyor (hepsi salt okunur):');
-    result.kesif = {};
-    for (const uri of PROBE_ENDPOINTS) {
-      try {
-        const p = await tv.request(uri);
-        result.kesif[uri] = { var: true, ornek: p };
-        log(`    ✓ VAR   ${uri}`);
-      } catch (e) {
-        result.kesif[uri] = { var: false, hata: String(e.message || e) };
-        log(`    ·  yok  ${uri}`);
-      }
-    }
-  }
-
-  tv.close();
 
   const outPath = resolve(ROOT, opt('--out', `data/tv-${host.replace(/\./g, '_')}.json`));
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, JSON.stringify(result, null, 2) + '\n');
+  writeFileSync(outPath, JSON.stringify(sonuc, null, 2) + '\n');
 
+  const n = sonuc.kanallar.length;
   log('\n──────────────────────────────────────────');
-  log(`  Kanal sayısı : ${channels.length}`);
-  const model = result.systemInfo?.modelName || result.swInfo?.model_name || '?';
-  log(`  Model        : ${model}`);
-  log(`  Firmware     : ${result.swInfo?.minor_ver ? result.swInfo.major_ver + '.' + result.swInfo.minor_ver : '?'}`);
+  log(`  Kanal sayısı : ${n}  (${sonuc.kanallar.filter((c) => c.isRadio).length} radyo)`);
+  log(`  Model        : ${sonuc.model || '?'}`);
+  log(`  Firmware     : ${sonuc.firmware || '?'}`);
   log('  Alan kapsamı :');
-  for (const [k, v] of Object.entries(result.alanKapsami)) {
-    const pct = channels.length ? Math.round((v / channels.length) * 100) : 0;
-    log(`      ${k.padEnd(15)} ${String(v).padStart(5)} / ${channels.length}  (%${pct})`);
+  for (const [k, v] of Object.entries(sonuc.alanKapsami)) {
+    log(`      ${k.padEnd(15)} ${String(v).padStart(5)} / ${n}  (%${n ? Math.round((v / n) * 100) : 0})`);
   }
   log(`\n  Kaydedildi   : ${outPath}`);
   log('──────────────────────────────────────────');
-  log('\nSonraki adım: bu dosyayı web/index.html içindeki "TV\'den okunan liste" alanına yükle.');
 }
 
 main().catch((e) => {
@@ -338,7 +113,7 @@ main().catch((e) => {
   console.error('\nİpuçları:');
   console.error('  • TV açık ve bilgisayarla aynı ağda olmalı (uyku modunda SSAP kapalıdır).');
   console.error('  • Ayarlar → Bağlantı → "Mobil TV Açık" / "LG Connect Apps" açık olmalı.');
-  console.error('  • Eşleştirme onayı TV ekranında çıkar; kumandayla kabul edilmezse zaman aşımına düşer.');
-  console.error('  • IP\'yi bulmak için: node tools/lgtv-read.mjs --discover');
+  console.error('  • Eşleştirme onayı TV ekranında çıkar; kabul edilmezse zaman aşımına düşer.');
+  console.error('  • IP bulmak için: node tools/lgtv-read.mjs --discover');
   process.exit(1);
 });
