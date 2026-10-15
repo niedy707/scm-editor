@@ -9,3 +9,10 @@ fixtures/
 node_modules/
 .DS_Store
 *.log
+
+# ⚠️ .vercelignore varken Vercel .gitignore'u OKUMAZ — git dışı yerel dosyalar burada da
+# ayrıca listelenmeli (15.10.2026: TV listesi, yedekler ve seri no taşıyan döküm az kalsın
+# siteye çıkıyordu).
+tv-ajan.tvler.json
+data/yerel/
+data/tv-*-20*.json
