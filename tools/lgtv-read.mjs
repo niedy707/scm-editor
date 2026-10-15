@@ -9,11 +9,11 @@
  * "radyo değil" göründü. Tekrarı kaldırmak bu sınıf hatayı bitirir.)
  *
  * Kullanım:
- *   node tools/lgtv-read.mjs 192.168.1.42
- *   node tools/lgtv-read.mjs 192.168.1.42 --out data/salon.json
- *   node tools/lgtv-read.mjs 192.168.1.42 --probe      # belgelenmemiş uçları YOKLA (salt okunur)
+ *   node tools/lgtv-read.mjs 10.63.0.40
+ *   node tools/lgtv-read.mjs 10.63.0.40 --out data/salon.json
+ *   node tools/lgtv-read.mjs 10.63.0.40 --probe      # belgelenmemiş uçları YOKLA (salt okunur)
  *   node tools/lgtv-read.mjs --discover                # ağdaki TV'leri ara
- *   node tools/lgtv-read.mjs 192.168.1.42 --insecure   # LG olmayan sertifikayı da kabul et
+ *   node tools/lgtv-read.mjs 10.63.0.40 --insecure   # LG olmayan sertifikayı da kabul et
  *
  * İlk bağlantıda TV ekranında eşleştirme onayı çıkar; kumandayla kabul et.
  * Alınan anahtar `.lgtv-clients.json` dosyasına yazılır, TV bir daha sormaz.
@@ -79,7 +79,8 @@ async function main() {
     onStatus: (s) => {
       if (s.asama === 'baglaniyor') log(`→ ${s.ip} bağlanılıyor…`);
       if (s.asama === 'baglandi') { log(`  bağlandı: ${s.url}`); if (s.sertifika) log(`  sertifika: ${s.sertifika}`); }
-      if (s.asama === 'eslesti') log('  eşleşti.');
+      if (s.asama === 'imzasiz-manifest') log('  imzalı manifest reddedildi (webOS 26) — imzasız manifestle yeniden deneniyor; TV ekranında onay çıkabilir.');
+      if (s.asama === 'eslesti') log(`  eşleşti${s.manifest === 'imzasiz' ? ' (imzasız manifest)' : ''}.`);
       if (s.asama === 'uc-ok') log(`  ✓ ${s.uri}`);
       if (s.asama === 'uc-hata') console.warn(`  ✗ ${s.uri} → ${s.hata}`);
     },

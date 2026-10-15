@@ -26,6 +26,27 @@ export const READ_ENDPOINTS = {
   swInfo: 'ssap://com.webos.service.update/getCurrentSWInformation',
 };
 
+/**
+ * İmzasız eşleştirme manifesti.
+ *
+ * webOS 26 (firmware 43.x, Ağustos 2026) LG'nin eski "test-signing-cert"
+ * imzasını kara listeye aldı; imzalı manifest `403 Pairing rejected:
+ * blacklisted certificate detected` ile reddediliyor. Çare: `signed` ve
+ * `signatures` bloklarını atıp imzalı izinleri üst listeye katmak. Eski
+ * modeller imzalı manifesti kabul etmeye devam ettiği için bu yalnız o hatada
+ * denenir (bkz. `register`).
+ */
+export function unsignedHandshake() {
+  const payload = structuredClone(HANDSHAKE);
+  const m = payload.manifest;
+  m.permissions = [...new Set([...(m.permissions || []), ...(m.signed?.permissions || [])])];
+  delete m.signed;
+  delete m.signatures;
+  return payload;
+}
+
+const BLACKLISTED = /blacklisted certificate/i;
+
 /** Hepsi "get" — cihazda hiçbir şey değiştirmez. Yazan uç bilerek yok. */
 export const PROBE_ENDPOINTS = [
   'ssap://tv/getChannelProgramInfo',
@@ -84,6 +105,7 @@ export class LgSsap {
   }
 
   async connect({ timeoutMs = 8000, allowAnyCertificate = false } = {}) {
+    this._connectOpts = { timeoutMs, allowAnyCertificate };
     const { conn, certificate, url } = await connectAuto(this.ip, { timeoutMs, allowAnyCertificate });
     this.ws = conn;
     this.url = url;
@@ -129,16 +151,31 @@ export class LgSsap {
     });
   }
 
-  /** @param clientKey önceden alınmış anahtar; yoksa TV ekranında onay istenir. */
-  async register(clientKey, { timeoutMs = 90000 } = {}) {
-    const payload = structuredClone(HANDSHAKE);
-    if (clientKey) payload['client-key'] = clientKey;
-    const res = await this._send({ type: 'register', payload }, { until: 'registered', timeoutMs });
-    return res['client-key'];
+  /**
+   * @param clientKey önceden alınmış anahtar; yoksa TV ekranında onay istenir.
+   * `this.manifest` hangi manifestle eşleşildiğini söyler ('imzali' | 'imzasiz').
+   */
+  async register(clientKey, { timeoutMs = 90000, onFallback = () => {} } = {}) {
+    const attempt = (payload) => {
+      if (clientKey) payload['client-key'] = clientKey;
+      return this._send({ type: 'register', payload }, { until: 'registered', timeoutMs });
+    };
+    try {
+      const res = await attempt(structuredClone(HANDSHAKE));
+      this.manifest = 'imzali';
+      return res['client-key'];
+    } catch (e) {
+      if (!BLACKLISTED.test(String(e.message || e))) throw e;
+      onFallback();
+      if (!this.ws || this.ws.closed) await this.connect(this._connectOpts);
+      const res = await attempt(unsignedHandshake());
+      this.manifest = 'imzasiz';
+      return res['client-key'];
+    }
   }
 
-  request(uri, payload) {
-    return this._send({ type: 'request', uri, ...(payload ? { payload } : {}) });
+  request(uri, payload, { timeoutMs } = {}) {
+    return this._send({ type: 'request', uri, ...(payload ? { payload } : {}) }, timeoutMs ? { timeoutMs } : {});
   }
 
   close() { try { this.ws?.close(); } catch { /* yok say */ } }
@@ -198,8 +235,8 @@ export async function readTv(ip, { clientKey = null, probe = false, allowAnyCert
   onStatus({ asama: 'baglandi', url: info.url, sertifika: info.certificateText });
 
   if (!clientKey) onStatus({ asama: 'onay-bekleniyor' });
-  const newKey = await tv.register(clientKey);
-  onStatus({ asama: 'eslesti' });
+  const newKey = await tv.register(clientKey, { onFallback: () => onStatus({ asama: 'imzasiz-manifest' }) });
+  onStatus({ asama: 'eslesti', manifest: tv.manifest });
 
   const sonuc = {
     tv: ip,

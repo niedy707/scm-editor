@@ -9,3 +9,12 @@ fixtures/local/
 *.TLL
 !fixtures/synthetic/*.TLL
 .vercel
+
+# Uygulama öncesi otomatik sıra yedekleri ve tanı ekran görüntüleri (cihaza özel)
+data/yerel/
+
+# Tarihli TV dökümleri: seri numarası ve yerel IP taşır (depo public)
+data/tv-*-20[0-9][0-9]-*.json
+
+# TV ajanı: TV listesi (yerel adres taşır, depo public)
+tv-ajan.tvler.json

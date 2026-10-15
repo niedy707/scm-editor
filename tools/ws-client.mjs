@@ -141,6 +141,11 @@ class WsConnection extends EventEmitter {
     if (this.closed) return;
     try { this._send(0x8, Buffer.alloc(0)); } catch { /* yok say */ }
     try { this.socket.end(); } catch { /* yok say */ }
+    // Bazı TV'ler kapanış çerçevesine karşılık vermiyor (55SM8000PLA / webOS 4.5'te
+    // ölçüldü): TCP yarı açık kalıyor ve Node süreci iş bittiği hâlde hiç çıkmıyor.
+    // Kısa bir süre tanınır, sonra soket zorla kapatılır.
+    const t = setTimeout(() => { try { this.socket.destroy(); } catch { /* yok say */ } }, 1000);
+    t.unref();
     this._finish();
   }
 }

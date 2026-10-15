@@ -129,6 +129,21 @@
       if (c) take(oi, c, 'id2');
     });
 
+    // ── 1c. tur: SVCID + frekans(±2) — TSID/ONID değişmiş kayıtlar için
+    // TV bir transponderin kayıtlarını canlı yayından yenileyince TSID ve ONID
+    // değişebiliyor (gerçek cihazda ölçüldü: 12034 MHz'de TSID 30→3, ONID 0→66);
+    // kimlik turları o kanalı kaçırır ve ada düşer. Ad ise güvenilmez: aynı kanal
+    // birden çok frekansta olabiliyor ("CNN TÜRK HD" iki kez). Servis numarası
+    // bir transponder içinde benzersizdir; frekansla birlikte kanalı tek başına
+    // belirler. Yalnız TEK aday varsa alınır.
+    oldList.forEach((o, oi) => {
+      if (usedOld.has(oi) || o.SVCID == null || o.frequency == null) return;
+      const cands = newList.filter(
+        (x) => !usedNew.has(x.idx) && x.SVCID === o.SVCID && x.frequency != null && near(o.frequency, x.frequency)
+      );
+      if (cands.length === 1) take(oi, cands[0], 'svc-freq');
+    });
+
     // ── 2. tur: normalize edilmiş ad (birebir)
     const byName = new Map();
     newList.forEach((c) => {
