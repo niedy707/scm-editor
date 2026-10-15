@@ -1,0 +1,37 @@
+# systemd birimi — /etc/systemd/system/tv-ajan.service olarak kurulur (kur.sh yapar)
+#
+# Log:     journalctl -u tv-ajan -f
+# Sağlık:  ev panelinde "TV kumandaları" sayfası ajan çevrimdışıysa bunu yazar.
+#
+# Ev-içi ajanların (Network/NAS-Sync/ev-ajani) kalıbı: ayrı birim, ayrı kullanıcı,
+# sertleştirilmiş. Farkı: bu ajan panelden KOMUT alır, bu yüzden yalnız Tailscale
+# adresine bağlanır (TV_AJAN_HOST) ve her istekte belirteç ister.
+
+[Unit]
+Description=TV ajani — evdeki LG TV'leri ev paneline acar (kumanda, durum, ekran)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/tv-ajan/tools/tv-ajan.mjs
+WorkingDirectory=/opt/tv-ajan
+EnvironmentFile=/etc/tv-ajan.env
+
+# Tailscale adresi açılmadan başlarsa bağlanamaz (EADDRNOTAVAIL) — yeniden dener.
+Restart=always
+RestartSec=10
+
+User=tvajan
+Group=tvajan
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
