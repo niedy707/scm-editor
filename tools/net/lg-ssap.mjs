@@ -104,9 +104,10 @@ export class LgSsap {
     this.ws = null;
   }
 
-  async connect({ timeoutMs = 8000, allowAnyCertificate = false } = {}) {
-    this._connectOpts = { timeoutMs, allowAnyCertificate };
-    const { conn, certificate, url } = await connectAuto(this.ip, { timeoutMs, allowAnyCertificate });
+  /** `retries`: kapalı TV'de yeniden deneme sayısı (varsayılan connectAuto'nunki — 3). */
+  async connect({ timeoutMs = 8000, allowAnyCertificate = false, retries } = {}) {
+    this._connectOpts = { timeoutMs, allowAnyCertificate, retries };
+    const { conn, certificate, url } = await connectAuto(this.ip, { timeoutMs, allowAnyCertificate, ...(retries != null ? { retries } : {}) });
     this.ws = conn;
     this.url = url;
     this.certificate = certificate;

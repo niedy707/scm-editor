@@ -36,6 +36,7 @@
  */
 
 import http from 'node:http';
+import net from 'node:net';
 import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -96,6 +97,21 @@ class HttpHata extends Error {
   constructor(kod, mesaj) { super(mesaj); this.kod = kod; }
 }
 
+/**
+ * TV'nin kumanda portu açık mı? Kapalı (fişte değil / ağda değil) TV'ye bağlanmaya çalışmak
+ * zaman aşımlarını tek tek beklemek demek: varsayılan denemelerle ~41 sn sürdü ve panel
+ * 15 sn'de vazgeçti (ölçüldü, 15.10.2026). Önce kısa bir TCP yoklaması yapılır.
+ */
+function portAcik(ip, port, ms = 800) {
+  return new Promise((ok) => {
+    const s = net.connect({ host: ip, port });
+    const bitir = (v) => { s.destroy(); ok(v); };
+    s.setTimeout(ms, () => bitir(false));
+    s.once('connect', () => bitir(true));
+    s.once('error', () => bitir(false));
+  });
+}
+
 function zamanAsimi(soz, ms, ne) {
   let t;
   return Promise.race([
@@ -136,8 +152,9 @@ class Tv {
     if (this.ssap?.ws && !this.ssap.ws.closed) return this.ssap;
     this.birak();
     if (!this.anahtar) throw new HttpHata(409, `${this.ad}: eşleşme anahtarı yok`);
+    if (!(await portAcik(this.ip, 3001))) throw new HttpHata(503, `${this.ad}: TV kapalı ya da ağda değil`);
     const s = new LgSsap(this.ip);
-    await s.connect({ timeoutMs: 4000 });
+    await s.connect({ timeoutMs: 3000, retries: 0 });
     // Anahtar varken TV onay sormaz. Sorarsa (anahtar geçersiz) beklemeyiz: zaman aşımı.
     await zamanAsimi(s.register(this.anahtar, { timeoutMs: 6000 }), 7000, 'eşleşme');
     s.ws.on('close', () => { if (this.ssap === s) this.birak(); });
@@ -191,7 +208,7 @@ class Tv {
       return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kanal };
     } catch (e) {
       this.birak();
-      return { id: this.id, ad: this.ad, acik: false, sebep: String(e.message || e).slice(0, 120) };
+      return { id: this.id, ad: this.ad, acik: false, sebep: String(e.message || e).split('\n')[0].slice(0, 120) };
     }
   }
 
