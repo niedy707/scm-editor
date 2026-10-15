@@ -1,6 +1,6 @@
 {
   "proje": "scm-editor",
-  "son_tarama": "2026-08-17",
+  "son_tarama": "2026-10-13",
   "oneriler": [
     {
       "id": "Ö-1",
@@ -312,33 +312,261 @@
     },
     {
       "id": "Ö-29",
-      "baslik": "TV'yi ağ üzerinden kontrol eden entegrasyon",
+      "baslik": "TV’yi ağ üzerinden kontrol eden entegrasyon — kapalı döngü sıralama sürücüsü",
+      "bolum": "mimari",
+      "durum": "yapıldı",
+      "ilk_gorulme": "2026-08-17",
+      "durum_tarihi": "2026-10-13",
+      "skor": 30,
+      "guven": "✅",
+      "not": "13.10.2026: tools/net/lg-editor.mjs + web/lib/moveplan.js + tools/tv.mjs sirala. Salon OLED83G55LW (webOS 26) üzerinde 3 taşıma 43 sn, her biri getChannelList ile doğrulandı. Henüz commit edilmedi. Yalnız uydu TV listesi ve webOS 26 tuş tarifi; oda TV (webOS 4.5) ve radyo listesi kapsam dışı (bkz. Ö-36). 14.10.2026: kullanıcının onayladığı 72 kanallık sıra salon TV’de tamamlandı (iki gecede 55 taşıma)."
+    },
+    {
+      "id": "Ö-30",
+      "baslik": "webOS 26 imzasız eşleştirme geri-düşüşü (blacklisted certificate)",
+      "bolum": "mimari",
+      "durum": "yapıldı",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 45,
+      "guven": "✅",
+      "not": "tools/net/lg-ssap.mjs unsignedHandshake(): önce imzalı, 403 alınırsa imzasız. Ağustos’ta alınan anahtar yeni onay çıkmadan kabul edildi. Commit edilmedi."
+    },
+    {
+      "id": "Ö-31",
+      "baslik": "Ekran görüntüsü modülü + komut satırı aracı (ekran/tus/liste/git/sirala)",
+      "bolum": "özellik",
+      "durum": "yapıldı",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 36,
+      "guven": "✅",
+      "not": "tools/net/lg-screen.mjs (ssap://tv/executeOneShot, 960×540 JPEG, ~2,8 kare/sn, arayüz dahil) + tools/tv.mjs. Commit edilmedi."
+    },
+    {
+      "id": "Ö-32",
+      "baslik": "Salon TV’de Kanalları Kopyala ile dışa aktar + dosyayı editörde aç + pilot içe aktarım",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 24,
+      "guven": "✅",
+      "not": "13.10.2026: menü ekrandan DOĞRULANDI — Ayarlar → Genel → Kanallar → Kanalları Kopyala var; TV - USB / USB - TV seçenekleri USB takılı olmadığı için gri. Kalan iş: USB takıp dışa aktarmak, dosya biçimini görmek, tek kanallık pilot içe aktarım. Kanıt: data/ssap-uc-kesfi.json → menuKesfi."
+    },
+    {
+      "id": "Ö-33",
+      "baslik": "“Sıram” sürükle-bırak sayfası + köprü uçları (plan/uygula/ilerleme/ekran)",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 30,
+      "guven": "✅",
+      "not": "Sıralama bugün yalnız komut satırından. Gerçek listede 80 kopya ad var; satır seçimi şart."
+    },
+    {
+      "id": "Ö-34",
+      "baslik": "Sıra kayması tespiti + sıramı yeniden uygula; Taşı düğmesi yoksa anlamlı hata",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 36,
+      "guven": "✅",
+      "not": "Otomatik güncelleme ayarı ağdan okunamıyor (settings/getSystemSettings kanal kategorisi webOS 26’da 500) — kayma ancak sonradan görülebilir."
+    },
+    {
+      "id": "Ö-35",
+      "baslik": "Kanal Numaralarını Düzenle (mavi tuş) ilkelini keşfet — tam numara atamak için",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 18,
+      "guven": "✅",
+      "not": "13.10.2026 gecesi ölçüldü: taşıma numara KÜMESİNİ koruyor, boşluklar yerinde kalıyor (11. sıradaki kanal 11, 12. sıradaki 13 numarayı aldı). Tam numara atamak gerekirse mavi tuş ekranı keşfedilmeli."
+    },
+    {
+      "id": "Ö-36",
+      "baslik": "Oda TV (webOS 4.5) için tuş haritası profili",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 20,
+      "guven": "🟡",
+      "not": "13.10.2026’da TV kapalıydı, hiçbir ölçüm yok. USB yolu o TV için yüksek kanıtlı alternatif."
+    },
+    {
+      "id": "Ö-37",
+      "baslik": "Sürücü ve planlayıcı için kalıcı regresyon testi (sahte TV)",
       "bolum": "mimari",
       "durum": "açık",
-      "ilk_gorulme": "2026-08-17",
-      "durum_tarihi": "2026-08-17",
-      "skor": 0,
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 18,
+      "guven": "✅",
+      "not": "Planlayıcı 3000 rastgele benzetimle sınandı ama teste yazılmadı; sürücünün hata yolları hiç test edilmedi."
+    },
+    {
+      "id": "Ö-38",
+      "baslik": "Eşleştirme anahtarını IP yerine cihaz kimliğine bağla; sürümü hello yanıtından oku",
+      "bolum": "mimari",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 27,
+      "guven": "✅",
+      "not": "Ev ağı 192.168.1.x → 10.63.0.x taşınınca anahtarlar elle taşındı. getCurrentSWInformation webOS 26’da 401."
+    },
+    {
+      "id": "Ö-39",
+      "baslik": "Çoklu seçimle blok taşıma (hız)",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 6,
       "guven": "⚪",
-      "not": "Kullanıcı bunu açıkça istedi (\"kumanda gibi davranıp menüden ayar yap\"). Gerçek cihazda doğrulandı: SSAP'ta yazma ucu yok (14 setter adayı 404) ama getPointerInputSocket VAR ve com.webos.app.channeledit ağdan açılabiliyor. Kapalı döngü sürücü (lg-editor.mjs) henüz yazılmadı."
+      "not": "Düzenleyici çoklu seçimi gösteriyor; blok davranışı denenmedi."
+    },
+    {
+      "id": "Ö-40",
+      "baslik": "Public depoda cihaz kimliği hijyeni (seri no, yerel IP, ACR belirteci)",
+      "bolum": "güvenlik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 27,
+      "guven": "✅",
+      "not": "İzlenen data/tv-salon*.json dosyalarında serialNumber var (3 dosya). Commit’ten önce ele alınmalı."
+    },
+    {
+      "id": "Ö-41",
+      "baslik": "Köprüye TV’yi süren uçlar eklenirken yetki, tek iş kilidi, zorunlu yedek",
+      "bolum": "güvenlik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 24,
+      "guven": "✅",
+      "not": "Ö-33 ile birlikte."
+    },
+    {
+      "id": "Ö-42",
+      "baslik": "SSAP’ta gizli yazma ucu aramaya devam etmek",
+      "bolum": "mimari",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 0,
+      "guven": "✅",
+      "not": "Cihazda 17 aday 404 (webOS 25 ve 26); 12 açık kaynak istemcide yok; 7 kanal izninin uç karşılığı bulunamadı. Hata 401 değil 404."
+    },
+    {
+      "id": "Ö-43",
+      "baslik": "Salon TV için root’lu doğrudan yazma",
+      "bolum": "mimari",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 0,
+      "guven": "🟡",
+      "not": "Güncel yazılımda kapalı görünüyor; tek araç yalnız webOS 22’de denenmiş. Root durumu araştırması güvenlik filtresine takıldı, derinleştirilmedi."
+    },
+    {
+      "id": "Ö-44",
+      "baslik": "Otel/ticari ağ klonlama (.tlx, Pro:Centric)",
+      "bolum": "mimari",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 0,
+      "guven": "✅",
+      "not": "tv.hw.commercialmodel=false (cihazda ölçüldü)."
+    },
+    {
+      "id": "Ö-45",
+      "baslik": "Geliştirici Modu uygulamasıyla kanal API’si",
+      "bolum": "mimari",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 0,
+      "guven": "✅",
+      "not": "LG resmî Luna API listesi 15 kalem; kanal okuyan/yazan yok."
+    },
+    {
+      "id": "Ö-46",
+      "baslik": "Hazır WiFi’li USB bellek satın almak",
+      "bolum": "mimari",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 0,
+      "guven": "🟡",
+      "not": "SanDisk Connect, MobileLite, FlashAir üretimden kalktı."
+    },
+    {
+      "id": "Ö-47",
+      "baslik": "Ekran görüntüsünü video/ses kaydı için kullanmak",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 0,
+      "guven": "✅",
+      "not": "Cihazda ölçüldü: ~2,8 kare/sn, 960×540 sabit, ses yok."
+    },
+    {
+      "id": "Ö-48",
+      "baslik": "LG ThinQ uygulamasıyla sıralama",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-13",
+      "skor": 0,
+      "guven": "🟡",
+      "not": "Uygulamada kanal düzenleme özelliği bulunamadı."
+    },
+    {
+      "id": "Ö-49",
+      "baslik": "Sürücüyü TV’nin transponder kayıt yenilemesine dayanıklı yap",
+      "bolum": "mimari",
+      "durum": "yapıldı",
+      "ilk_gorulme": "2026-10-13",
+      "durum_tarihi": "2026-10-14",
+      "skor": 30,
+      "guven": "✅",
+      "not": "Rapor sonrası aynı gece ortaya çıktı: TV seçilen kanalın transponderini yeniliyor (TSID/ONID değişiyor, servis ekleniyor), 55 taşımalık uygulama 7. taşımada durdu. Kod yazıldı (kimlik physicalNumber+SVCID, toleranslı doğrulama, yeniden deneme, order.js svc-freq katmanı; 36 test geçti) ama CİHAZDA DOĞRULANMADI — TV bağlantı kabul etmeyi bıraktı. Listede 32 bayat transponder var. Ayrıntı: COZUMLER.md. — 14.10.2026 cihazda doğrulandı: 40 taşıma, 3 yineleme kendiliğinden toparlandı, sıra tarifle birebir. Ek düzeltme: yüzen satır odak kaybı (YUKARI+AŞAĞI), bkz. COZUMLER.md."
     }
   ],
   "arastirma": {
-    "tarih": "2026-08-17",
-    "arama_sayisi": 30,
-    "kaynak_dogrulanan": 116,
+    "tarih": "2026-10-13",
+    "mod": "odak: veritabanına toplu yazma yolu",
+    "ajan": {
+      "baslatilan": 4,
+      "sonuc_veren": 3,
+      "not": "root/exploit durumu ajanı güvenlik filtresine takıldı; konu kapsamdan çıkarıldı"
+    },
+    "kaynak_satiri": 121,
+    "kaynak_dogrulanan": 98,
     "benzer_projeler": [
       "PredatH0r/ChanSort",
+      "robNice/lg-webos-channel-editor",
+      "shihsaway/lg-channel-editor",
+      "srcshelton/webos-channel-tool",
+      "mertparlak-zima/lg-channel-import",
       "Woodstock99/ChanView",
       "Motivesoft/lgTLL",
-      "shihsaway/lg-channel-editor",
-      "ChannelEditor/LG",
-      "aycanozarpaci/philips-channel-edit",
-      "lukama1/samsung-channel-list-editor",
-      "mimez/samychan",
-      "iltekin/scm-editor",
       "Sofien-Touati/LG-TLL-Cleaner-script",
-      "srcshelton/webos-channel-tool",
-      "vitalikp/scmedit"
-    ]
+      "ChannelEditor/LG"
+    ],
+    "onceki": {
+      "tarih": "2026-08-17",
+      "arama_sayisi": 30,
+      "kaynak_dogrulanan": 116
+    }
   }
 }

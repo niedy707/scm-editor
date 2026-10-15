@@ -2,8 +2,18 @@
   "aciklama": "SSAP yazma/tarama ucu keşfi — gerçek cihazlarda ölçüldü. Yöntem: aday uçlar boş payload ile çağrıldı; amaç işlem yapmak değil, ucun VAR olup olmadığını hata metninden ayırt etmek (404 = uç yok, 'invalid/missing parameter' = uç var). Seçilen adayların hepsi zorunlu hedef parametresi ister, dolayısıyla hedefsiz çağrı bir şeyi değiştiremez.",
   "olcumTarihi": "2026-08-17",
   "cihazlar": [
-    { "ip": "192.168.1.29", "model": "OLED83G55LW", "firmware": "33.31.68", "not": "webOS 25 (2025 G5)" },
-    { "ip": "192.168.1.22", "model": "55SM8000PLA", "firmware": "05.40.97", "not": "webOS 4.5 (2019)" }
+    {
+      "ip": "192.168.1.29",
+      "model": "OLED83G55LW",
+      "firmware": "33.31.68",
+      "not": "webOS 25 (2025 G5)"
+    },
+    {
+      "ip": "192.168.1.22",
+      "model": "55SM8000PLA",
+      "firmware": "05.40.97",
+      "not": "webOS 4.5 (2019)"
+    }
   ],
   "yazmaUclari": {
     "cihaz": "192.168.1.29",
@@ -55,5 +65,60 @@
     "ssap://system.launcher/launch": "VAR — com.webos.app.channeledit ve com.webos.app.channelsetting ağdan açılabiliyor",
     "ssap://tv/getChannelList": "VAR — okuma; düzenleyici uygulaması açıkken bile çalışıyor"
   },
-  "cikarim": "Kanal listesini ağdan YAZAN bir SSAP ucu yok. Eşleştirme manifesti SET_CHANNEL_SKIP / DELETE_SELECT_CHANNEL gibi yazma izinleri ilan ediyor ama karşılık gelen uçlar cihazda mevcut değil. Ağdan yazmanın tek yolu, TV'nin kendi arayüzünü kumanda kanalından sürmek ve her adımı getChannelList ile doğrulamaktır; bu sürücü (lg-editor.mjs) HENÜZ YAZILMADI."
+  "cikarim": "Kanal listesini ağdan YAZAN bir SSAP ucu yok. Eşleştirme manifesti SET_CHANNEL_SKIP / DELETE_SELECT_CHANNEL gibi yazma izinleri ilan ediyor ama karşılık gelen uçlar cihazda mevcut değil. Ağdan yazmanın tek yolu, TV'nin kendi arayüzünü kumanda kanalından sürmek ve her adımı getChannelList ile doğrulamaktır; bu sürücü (lg-editor.mjs) HENÜZ YAZILMADI.",
+  "olcumler": [
+    {
+      "tarih": "2026-10-13",
+      "cihaz": {
+        "ip": "10.63.0.40",
+        "model": "OLED83G55LW",
+        "not": "webOS 26 — imzalı manifest \"blacklisted certificate\" ile reddediliyor, eşleşme imzasız manifestle"
+      },
+      "yontem": "Ağustos ölçümüyle aynı: boş payload ile varlık yoklaması (404 = uç yok)",
+      "yazmaUclari": {
+        "denenen": 17,
+        "bulunan": 0,
+        "not": "Ağustos listesindeki 14 aday + editChannelList/reorderChannel/setChannelOrder — hepsi 404"
+      },
+      "yeniBulgular": {
+        "ssap://tv/executeOneShot": "VAR — 960×540 JPEG ekran görüntüsü (arayüz katmanı dahil), ~2,8 kare/sn",
+        "ssap://api/getServiceList": "VAR — 16 servis: api, audio, config, externalpq, media.controls, media.viewer, pairing, settings, system, system.launcher, system.notifications, timer, tv, user, webapp, weeCustom",
+        "ssap://config/getConfigs": "VAR — desen bazlı; tv.hw.commercialmodel=false, tv.conti.supportAutoSort=true, tv.rmm.lcn=false",
+        "ssap://com.webos.service.update/getCurrentSWInformation": "401 insufficient permissions (imzasız manifestte READ_UPDATE_INFO yok)"
+      },
+      "cikarim": "webOS 26 da kanal listesini ağdan yazan uç sunmuyor; kumanda-sürme + ekran görüntüsü + getChannelList kapalı döngüsü bu sürümde doğrulandı (SHOW HD 5→4→5 taşıma testi).",
+      "menuKesfi": {
+        "yontem": "Ayarlar uygulaması (com.palm.app.settings) ağdan açıldı, kumanda tuşlarıyla gezildi, her adım ekran görüntüsüyle okundu. Hiçbir işlem başlatılmadı.",
+        "kanalYoneticisi": {
+          "yol": "com.webos.app.channeledit → Tüm Kanalları Düzenle",
+          "renkTuslari": {
+            "kirmizi": "Kilitle / Aç",
+            "yesil": "Atla / Geri Yükle",
+            "sari": "Taşı",
+            "mavi": "Kanal Numaralarını Düzenle"
+          },
+          "tasima": "Araya girme (takas değil): kanal hedef konuma yerleşir, aradakiler birer sıra kayar. Rakam yazınca hedef seçme penceresi açılır. Değişiklik anında kalıcıdır."
+        },
+        "kanallariKopyala": {
+          "yol": "Ayarlar → Genel → Kanallar → Kanalları Kopyala",
+          "var": true,
+          "secenekler": [
+            "Kopyalanan Kanallar için USB deposu",
+            "TV - USB",
+            "USB - TV"
+          ],
+          "durum": "Üç seçenek de gri: \"TV'nize bağlı USB aygıtı yok.\"",
+          "anlami": "webOS 26 (2025 G5) USB ile kanal listesi dışa/içe aktarımını sunuyor. Dışa aktarılan dosyanın biçimi ve içe aktarımın çalışıp çalışmadığı USB takılmadan ÖLÇÜLEMEDİ."
+        },
+        "genelKanallarMenusu": [
+          "Kanal Tarama ve Ayarlar",
+          "Kanal Yöneticisi",
+          "Çift Mono",
+          "CI Bilgileri (gri)",
+          "Kanalları Kopyala",
+          "HbbTV"
+        ]
+      }
+    }
+  ]
 }
