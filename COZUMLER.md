@@ -14,6 +14,61 @@
 > 📌 **Bu defterden önce yazılmış kayıt:** [`NOTLAR-saha-16agustos2026.md`](NOTLAR-saha-16agustos2026.md)
 > — 16.08.2026 saha notları. Yeni kayıtlar buraya, o dosyaya değil.
 
+## 15.10.2026 — TV'nin verdiği yayın akışı ERTESİ GÜNÜN akışı; tarih kaydırarak "düzeltmek" yanlış program gösterir
+
+**Belirti:** Kumanda sayfasında kanalların altına "şu an ne var" konacaktı. `ssap://tv/getChannelProgramInfo
+{channelId}` başka kanallar için akış döndürdü (55SM8000PLA): Star TV "Star Haber 19:00–20:00, Uncharted
+20:00–22:30", Kanal D "Kanal D Ana Haber 19:00–20:00, Beyaz'la Joker 20:00–23:15" — ama hepsi **16.10**
+tarihli; Mac, pi63, VPS ve TV'nin kendi saati (`com.webos.service.tv.time/getCurrentTime`) 15.10'du.
+**Kök neden:** Veri yanlış etiketlenmiş bugünün akışı değil, gerçekten yarının akışı: Beyaz'la Joker bu
+hafta cumaya alınmıştı (16.10 Cuma 20:00) ve o akşam ~19:57'de Kanal D'de akışın "Ana Haber" dediği
+saatte bir dizi yayındaydı (ekran görüntüsüyle görüldü). Salon TV (webOS 26) HDMI'dayken akış hiç vermedi.
+**Çözüm:** `tools/tv-ajan.mjs` → `programSec`: yalnız gerçek ana uyan kayıt kabul edilir; panel program
+satırını yalnız böyle bir veri gelirse gösterir (`aqara/public/tv.js`). Sonuç: şimdilik pratikte boş.
+Güvenilir EPG için dış kaynak gerekiyor (kullanıcı kararı bekliyor — `TODO.md`).
+**Neden bariz olan işe yaramadı:** "TV'nin tarihi bir gün kaymış, ±1 gün kaydırıp günün saatine göre
+eşleştir" düzeltmesi yazıldı, birim testi geçti — ama gerçek akışla karşılaştırılınca yanlış programı
+"şimdi" diye gösterdiği anlaşıldı ve geri alındı. Ders: tarih uyuşmazlığını "etiket hatası" saymadan önce
+içeriği dışarıdan doğrula.
+
+## 15.10.2026 — Uzun ömürlü ajanda ekran görüntüsü ikinci istekten itibaren "LG sertifikası sunmadı"
+
+**Belirti:** `tools/tv.mjs ekran` hep çalışıyordu; ajan (`tv-ajan.mjs`) ise ilk görüntüyü alıp sonrakileri
+`Ekran görüntüsü sunucusu LG cihaz sertifikası sunmadı` ile reddetti.
+**Kök neden:** Node'un ortak HTTPS ajanı bağlantıyı/TLS oturumunu yeniden kullanıyor; devam ettirilen
+oturumda `res.socket.getPeerCertificate()` boş dönüyor, bizim ad üzerinden sertifika denetimimiz de haklı
+olarak reddediyor. Tek seferlik CLI süreci bunu hiç yaşamıyor.
+**Çözüm:** `tools/net/lg-screen.mjs` → `https.get(..., { agent: false })`: her indirme yeni TLS el sıkışması.
+**Neden bariz olan işe yaramadı:** Denetimi gevşetmek (`allowAnyCertificate`) hatayı susturur ama TV'den
+geldiğini doğrulamadığımız görüntüyü panele taşır. Sorun sertifikada değil, oturum yeniden kullanımında.
+
+## 15.10.2026 — Kapalı TV'ye bağlanmak 41–47 sn; eski TV kapanışa yanıt vermeyince süreç hiç bitmiyor
+
+**Belirti:** (1) Panelden durum sorgusu iki TV kapalıyken 47 sn sürdü, panel 15 sn'de "yanıt yok" dedi.
+(2) 55SM8000PLA'ya karşı `tools/tv.mjs` işini bitirdiği hâlde terminalde asılı kaldı.
+**Kök neden:** (1) `connectAuto` varsayılan olarak 4 tur × 2 port (3001 wss + 3000 ws) dener, aralarda
+bekler; fişi çekik TV SYN'e yanıt vermediği için her deneme zaman aşımını sonuna kadar bekler.
+(2) `WsConnection.close()` kapanış çerçevesi gönderip TCP'nin yarısını kapatıyordu; webOS 26 karşılık
+veriyor, webOS 4.5 vermiyor → soket yarı açık kalıyor, Node olay döngüsü boşalmıyor.
+**Çözüm:** (1) `tv-ajan.mjs` → bağlanmadan önce 0,8 sn TCP yoklaması (`portAcik`), sonra `retries: 0`
+(`LgSsap.connect` artık `retries` geçiriyor) → 0,8 sn. (2) `tools/ws-client.mjs` → `close()` 1 sn sonra
+soketi `destroy()` eder (zamanlayıcı `unref`).
+**Neden bariz olan işe yaramadı:** Panel tarafında zaman aşımını uzatmak kullanıcıyı 47 sn bekletir;
+CLI'da `process.exit()` eklemek sorunu yalnız CLI'da gizler, uzun ömürlü ajanda sızıntı olarak kalırdı.
+
+## 15.10.2026 — `.vercelignore` varken Vercel `.gitignore`'u OKUMUYOR; takma adlar eski yayına sabit
+
+**Belirti:** `git push` sonrası site güncellenmedi; `vercel --prod` öncesi kontrolde git dışı dosyaların
+(TV listesi — ev ağı adresleri, `data/yerel/` — yedekler ve TV ekran görüntüleri, seri numarası taşıyan
+tarihli döküm) yayına gideceği fark edildi. Yayından sonra 6 takma adın (`kanalsirala`…) hâlâ eskiyi sunduğu görüldü.
+**Kök neden:** Proje Vercel'e git ile bağlı değil (yayınlar Ağustos'ta CLI'dan). `.vercelignore` dosyası
+varken Vercel yalnız onu uygular, `.gitignore`'a bakmaz. Takma adlar `vercel alias set` ile belli bir
+yayına bağlanmış — projenin "son üretim yayınını izle" alan adları değiller.
+**Çözüm:** `.vercelignore`'a git dışı dosyalar ayrıca eklendi; yayından sonra 7 adreste bu dosyaların
+404 döndüğü doğrulandı; 6 takma ad `vercel alias set <yeni-yayın> <ad>.vercel.app` ile taşındı.
+**Neden bariz olan işe yaramadı:** "`.gitignore`'da var, yayına gitmez" varsayımı; ve "yayın Ready, alias
+`scm-editor.vercel.app` güncellendi" çıktısına bakıp bitti saymak — diğer adresler ölçülmeden fark edilmezdi.
+
 ## 14.10.2026 — Taşı modunda hedef seçilince yüzen satır odağı kaybediyor, OK hiçbir şey yapmıyor
 
 **Belirti:** Sürücü "A2" kanalını (66 → 27) üç denemede de taşıyamadı ve durdu; aynı oturumda önceki 7

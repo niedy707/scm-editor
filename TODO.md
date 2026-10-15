@@ -1,6 +1,6 @@
 # TODO — scm-editor
 
-> Son güncelleme: 14.10.2026
+> Son güncelleme: 15.10.2026
 
 Görev eklerken sadece başlık yazma: **ne yapılacak**, **nerede** (`dosya:satır`),
 **neden bekliyor** ve varsa **engeli** belirt. Kullanıcı bir karar verdiyse kararı da yaz.
@@ -22,11 +22,26 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
 - [x] **Sürücü cihazda doğrulandı.** Yenilemeye dayanıklı kimlik ve yeniden deneme gerçek koşulda çalıştı
       (3 takılma kendiliğinden toparlandı). Ek düzeltme: yüzen satırın odak kaybı (`COZUMLER.md`).
 
+## Tamamlanan (15.10.2026)
+
+- [x] **TV kumandaları ev panelinde yayında** — `ev.ibrahimyagci.com` → 📺 TV kumandaları (`/tv`).
+      pi63'te `tv-ajan` (systemd, Tailscale `:3027`), panel `aqara/tvKumanda.js`. Commit + push + yayın
+      yapıldı (scm-editor `a52784f`, aqara `29311c2`); canlıda önbellek v29, `/tv` girişli, VPS → ajan 200.
+- [x] **Oturma odası TV'si (55SM8000PLA) ağdan erişilebilir** — eşleşme, kumanda soketi, ekran görüntüsü
+      (1920×1080), kanal listesi, Kanal Yöneticisi açılıyor (2 sütunlu ızgara, numarayla atlama var).
+
 ## Önce bu
 
-- [ ] **Değişiklikleri commit et — önce Ö-40.** Bugüne kadarki kodun tamamı çalışma dizininde, commit
-      edilmedi. Depo **public**: izlenen `data/tv-salon*.json` dosyalarında TV seri numarası var
-      (geçmişteki üç dosya için karar kullanıcıda). Tarihli yeni dökümler artık `.gitignore`'da.
+- [ ] **Kullanıcının telefonda canlı denemesi.** Girişli sayfayı ben açamıyorum; panel → ajan yolu
+      birim testleri + VPS'ten ajana doğrudan istekle doğrulandı, panel sürecinin içinden değil.
+- [ ] **EPG kaynağı kararı (kullanıcı).** TV'nin akışı güvenilmez (ertesi günün akışı — `COZUMLER.md`).
+      Seçenekler: iptv-org/epg ile tvplus/digiturk rehberinden pi63'te düzenli toplama · kanalların kendi
+      yayın akışı sayfaları · EPG'siz. Program satırı kodda hazır, yalnız güvenilir veri gelirse görünür.
+- [ ] **Ö-40 — geçmişteki üç döküm dosyasında TV seri numarası** (`data/tv-salon*.json`, public depo).
+      Yeni dökümler artık git ve Vercel dışında. Geçmişten silmek zorla push ister — karar kullanıcıda.
+- [ ] **15.10 `/tara` raporu** (odak: hızlı erişim) yazılmadı — araştırma yapıldı (hazır paneller
+      matrisi: hiçbiri kanal sıralamıyor, iki TV'yi birlikte gösteren yok), kullanıcı doğrudan uygulamaya
+      geçti. Bulgular `scm-editor_tara.md`'ye eklenmeli.
 
 ## Sırada
 
