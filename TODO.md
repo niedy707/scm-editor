@@ -1,6 +1,6 @@
 # TODO — scm-editor
 
-> Son güncelleme: 15.10.2026
+> Son güncelleme: 16.10.2026
 
 Görev eklerken sadece başlık yazma: **ne yapılacak**, **nerede** (`dosya:satır`),
 **neden bekliyor** ve varsa **engeli** belirt. Kullanıcı bir karar verdiyse kararı da yaz.
@@ -22,9 +22,14 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
 - [x] **Sürücü cihazda doğrulandı.** Yenilemeye dayanıklı kimlik ve yeniden deneme gerçek koşulda çalıştı
       (3 takılma kendiliğinden toparlandı). Ek düzeltme: yüzen satırın odak kaybı (`COZUMLER.md`).
 
+## Tamamlanan (16.10.2026)
+
+- [x] **EPG kaynağı kararı:** kullanıcı "tvplus/digiturk rehberinden topla" dedi. digiturk asıl kaynak
+      (VPS'e 403 → pi63 çeker), tvplus yedek. TV'den akış okuma kaldırıldı (`COZUMLER.md`).
+
 ## Tamamlanan (15.10.2026)
 
-- [x] **TV kumandaları ev panelinde yayında** — `ev.ibrahimyagci.com` → 📺 TV kumandaları (`/tv`).
+- [x] **TV kumandaları ev panelinde yayında** — ev paneli → 📺 TV kumandaları (`/tv`).
       pi63'te `tv-ajan` (systemd, Tailscale `:3027`), panel `aqara/tvKumanda.js`. Commit + push + yayın
       yapıldı (scm-editor `a52784f`, aqara `29311c2`); canlıda önbellek v29, `/tv` girişli, VPS → ajan 200.
 - [x] **Oturma odası TV'si (55SM8000PLA) ağdan erişilebilir** — eşleşme, kumanda soketi, ekran görüntüsü
@@ -34,9 +39,18 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
 
 - [ ] **Kullanıcının telefonda canlı denemesi.** Girişli sayfayı ben açamıyorum; panel → ajan yolu
       birim testleri + VPS'ten ajana doğrudan istekle doğrulandı, panel sürecinin içinden değil.
-- [ ] **EPG kaynağı kararı (kullanıcı).** TV'nin akışı güvenilmez (ertesi günün akışı — `COZUMLER.md`).
-      Seçenekler: iptv-org/epg ile tvplus/digiturk rehberinden pi63'te düzenli toplama · kanalların kendi
-      yayın akışı sayfaları · EPG'siz. Program satırı kodda hazır, yalnız güvenilir veri gelirse görünür.
+- [ ] **16.10 değişikliklerini pi63'e kur + evde doğrula** (kullanıcı ev ağında değilken deneme yapılmadı).
+      Kod hazır, testli (`npm test` → 27 ajan testi; aqara 375): rehberden EPG (`tools/net/rehber.mjs`),
+      kapalı TV'yi Wake-on-LAN ile açıp kanalı açma (`tools/net/wol.mjs`, `tv-ajan.mjs` → `uyan`/`kanalAc`,
+      yeni `/ac` ucu), panelde ⏻ Aç/Kapat. Kurulum: kaynak + `tv-ajan.tvler.json` (artık `mac` alanlı) pi63'e
+      → `sudo ./tools/tv-ajan/kur.sh` (servis birimi değişti: `StateDirectory`, `AF_NETLINK`).
+      Evde sınanacaklar:
+      1. **İki TV'de "Mobil TV Açık" / "Wi-Fi ile aç"** ayarı açık mı (menüdeki yeri sürüme göre değişir,
+         iki TV'de de henüz bakılmadı) — kapalıysa sihirli paket TV'yi açmaz, ajan 40 sn sonra bu ipucuyla
+         504 döner. Ekran görüntüsüyle menüden bakılabilir.
+      2. TV kapalıyken panelden bir kanala bas → açılıp o kanala geçmeli. Süre ölçülmeli (beklenen 15-40 sn).
+      3. pi63'ten digiturk 200 mü (`journalctl -u tv-ajan` → `[rehber] digiturk <gün>: N kanal`), tvplus
+         evden bağlanıyor mu (yedek; doğrulanmadı).
 - [ ] **Ö-40 — geçmişteki üç döküm dosyasında TV seri numarası** (`data/tv-salon*.json`, public depo).
       Yeni dökümler artık git ve Vercel dışında. Geçmişten silmek zorla push ister — karar kullanıcıda.
 - [ ] **15.10 `/tara` raporu** (odak: hızlı erişim) yazılmadı — araştırma yapıldı (hazır paneller

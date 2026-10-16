@@ -14,6 +14,23 @@
 > 📌 **Bu defterden önce yazılmış kayıt:** [`NOTLAR-saha-16agustos2026.md`](NOTLAR-saha-16agustos2026.md)
 > — 16.08.2026 saha notları. Yeni kayıtlar buraya, o dosyaya değil.
 
+## 16.10.2026 — Yayın rehberi: digiturk VPS'e 403 veriyor, geçmiş günü BOŞ döndürüyor
+
+**Belirti:** TV'nin akışı güvenilmez çıkınca (aşağıdaki kayıt) "şu an ne var" dış rehbere taşındı.
+digiturk'ün günlük rehber ucu (`/Ajax/GetTvGuideFromDigiturk?Day=MM/DD/YYYY 00:00:00`) Mac'ten 1,7 sn'de
+108 kanal verdi; aynı istek VPS'ten **403**. Dünün tarihiyle istek 200 dönüyor ama sayfada **0 kanal**.
+tvplus (`izmaottvsc14.tvplus.com.tr:33207`) ev dışındaki ağdan hiç bağlanmadı.
+**Kök neden:** digiturk veri merkezi IP'lerini engelliyor (Türkiye'deki ev bağlantısı geçiyor). Rehber
+yalnız bugün ve sonrasını sunuyor; gece yarısını geçen programın başı dünün sayfasında kalıyor.
+**Çözüm:** Rehberi ev ağındaki ajan (pi63) çeker — `tools/net/rehber.mjs`. Günlük sayfa diske yazılır
+(`/var/lib/tv-ajan`, systemd `StateDirectory`); dün **yalnız önbellekten** okunur (ağdan istenmez).
+Sözleşme: sayfadan 10'dan az kanal çıkarsa hata (biçim değişmiş demektir — sessizce boş dönülmez).
+Başarısız çekiş 15 dk tekrarlanmaz; ağ hatasında bayat veri kullanılır. tvplus yalnız yedek, o da 15 dk
+olumsuz önbellekli. Ajan açılışta günü önceden çeker, 3 saatte bir tazeler.
+**Neden bariz olan işe yaramadı:** Rehberi panelde (VPS) çekmek en basit yoldu — 403. "Dünü de iste"
+yaklaşımı boş sayfa yüzünden işe yaramıyor; önbellek tek yol. Yöntem iptv-org/epg yapılandırmalarından
+öğrenildi, kod yazıldı (bağımlılık eklenmedi).
+
 ## 15.10.2026 — TV'nin verdiği yayın akışı ERTESİ GÜNÜN akışı; tarih kaydırarak "düzeltmek" yanlış program gösterir
 
 **Belirti:** Kumanda sayfasında kanalların altına "şu an ne var" konacaktı. `ssap://tv/getChannelProgramInfo
@@ -25,7 +42,7 @@ hafta cumaya alınmıştı (16.10 Cuma 20:00) ve o akşam ~19:57'de Kanal D'de a
 saatte bir dizi yayındaydı (ekran görüntüsüyle görüldü). Salon TV (webOS 26) HDMI'dayken akış hiç vermedi.
 **Çözüm:** `tools/tv-ajan.mjs` → `programSec`: yalnız gerçek ana uyan kayıt kabul edilir; panel program
 satırını yalnız böyle bir veri gelirse gösterir (`aqara/public/tv.js`). Sonuç: şimdilik pratikte boş.
-Güvenilir EPG için dış kaynak gerekiyor (kullanıcı kararı bekliyor — `TODO.md`).
+**16.10.2026:** TV'den akış okuma tamamen kaldırıldı; kaynak artık yayın rehberi (yukarıdaki kayıt).
 **Neden bariz olan işe yaramadı:** "TV'nin tarihi bir gün kaymış, ±1 gün kaydırıp günün saatine göre
 eşleştir" düzeltmesi yazıldı, birim testi geçti — ama gerçek akışla karşılaştırılınca yanlış programı
 "şimdi" diye gösterdiği anlaşıldı ve geri alındı. Ders: tarih uyuşmazlığını "etiket hatası" saymadan önce

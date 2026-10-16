@@ -8,7 +8,7 @@
 # adresine bağlanır (TV_AJAN_HOST) ve her istekte belirteç ister.
 
 [Unit]
-Description=TV ajani — evdeki LG TV'leri ev paneline acar (kumanda, durum, ekran)
+Description=TV ajani — evdeki LG TV'leri ev paneline acar (kumanda, durum, ekran, acma, yayin akisi)
 After=network-online.target tailscaled.service
 Wants=network-online.target
 
@@ -28,7 +28,12 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# AF_NETLINK: Wake-on-LAN yayın adresi için arayüz listesi (os.networkInterfaces) bunu ister.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+# Rehber önbelleği (günlük yayın akışı) → /var/lib/tv-ajan (STATE_DIRECTORY). ProtectSystem=strict
+# altında yazılabilen tek yer burası.
+StateDirectory=tv-ajan
+StateDirectoryMode=0750
 
 StandardOutput=journal
 StandardError=journal

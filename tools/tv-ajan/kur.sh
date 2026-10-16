@@ -8,7 +8,7 @@
 # YAZMAZ — belirteç değişirse panel bağlantısı kopar.
 #
 # Kaynak klasörde depo dışı iki dosya da olmalı (ilk kurulumda; sonra /opt'takiler kalır):
-#   tv-ajan.tvler.json   TV listesi (yerel adresler)
+#   tv-ajan.tvler.json   TV listesi (yerel adresler + uzaktan açma için MAC)
 #   .lgtv-clients.json   TV eşleşme anahtarları
 set -euo pipefail
 
@@ -32,6 +32,7 @@ echo "── 3/6  Dosyalar → $HEDEF"
 DOSYALAR=(
   tools/tv-ajan.mjs tools/ws-client.mjs tools/ssap-handshake.json
   tools/net/lg-ssap.mjs tools/net/lg-input.mjs tools/net/lg-screen.mjs tools/net/kanal-bul.mjs
+  tools/net/rehber.mjs tools/net/wol.mjs
   web/lib/order.js
 )
 for f in "${DOSYALAR[@]}"; do
