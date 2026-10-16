@@ -39,7 +39,8 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
 
 - [ ] **Kullanıcının telefonda canlı denemesi.** Girişli sayfayı ben açamıyorum; panel → ajan yolu
       birim testleri + VPS'ten ajana doğrudan istekle doğrulandı, panel sürecinin içinden değil.
-- [ ] **16.10 değişikliklerini pi63'e kur + evde doğrula** (kullanıcı ev ağında değilken deneme yapılmadı).
+- [ ] **16.10 değişikliklerini evde doğrula.** pi63'e ve panele 16.10.2026 akşamı kuruldu; rehber pi63'ten
+      çalışıyor (digiturk 108 kanal). Uzaktan açma henüz gerçek TV'de denenmedi.
       Kod hazır, testli (`npm test` → 27 ajan testi; aqara 375): rehberden EPG (`tools/net/rehber.mjs`),
       kapalı TV'yi Wake-on-LAN ile açıp kanalı açma (`tools/net/wol.mjs`, `tv-ajan.mjs` → `uyan`/`kanalAc`,
       yeni `/ac` ucu), panelde ⏻ Aç/Kapat. Kurulum: kaynak + `tv-ajan.tvler.json` (artık `mac` alanlı) pi63'e
