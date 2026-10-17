@@ -1,6 +1,6 @@
 {
   "proje": "scm-editor",
-  "son_tarama": "2026-10-13",
+  "son_tarama": "2026-10-17",
   "oneriler": [
     {
       "id": "Ö-1",
@@ -396,7 +396,7 @@
       "durum_tarihi": "2026-10-13",
       "skor": 20,
       "guven": "🟡",
-      "not": "13.10.2026’da TV kapalıydı, hiçbir ölçüm yok. USB yolu o TV için yüksek kanıtlı alternatif."
+      "not": "13.10.2026’da TV kapalıydı, hiçbir ölçüm yok. USB yolu o TV için yüksek kanıtlı alternatif. · 17.10.2026: oda TV ağdan kumanda ediliyor (kumanda/WOL); Kanal Yöneticisi tuş haritası hâlâ açık"
     },
     {
       "id": "Ö-37",
@@ -540,33 +540,323 @@
       "skor": 30,
       "guven": "✅",
       "not": "Rapor sonrası aynı gece ortaya çıktı: TV seçilen kanalın transponderini yeniliyor (TSID/ONID değişiyor, servis ekleniyor), 55 taşımalık uygulama 7. taşımada durdu. Kod yazıldı (kimlik physicalNumber+SVCID, toleranslı doğrulama, yeniden deneme, order.js svc-freq katmanı; 36 test geçti) ama CİHAZDA DOĞRULANMADI — TV bağlantı kabul etmeyi bıraktı. Listede 32 bayat transponder var. Ayrıntı: COZUMLER.md. — 14.10.2026 cihazda doğrulandı: 40 taşıma, 3 yineleme kendiliğinden toparlandı, sıra tarifle birebir. Ek düzeltme: yüzen satır odak kaybı (YUKARI+AŞAĞI), bkz. COZUMLER.md."
+    },
+    {
+      "id": "Ö-50",
+      "baslik": "'Geri dön' — reklam arası sayacı (X dk sonra şu kanala dön)",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 30,
+      "guven": "✅"
+    },
+    {
+      "id": "Ö-51",
+      "baslik": "'Program' sekmesi — tarih/saatli ve tekrarlı kanal açma",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 30,
+      "guven": "✅"
+    },
+    {
+      "id": "Ö-52",
+      "baslik": "'Başlayınca aç' — rehberden programa bağlı görev (+ dizi kuralı)",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 24,
+      "guven": "✅",
+      "not": "rehber 7 gün ileri (ölçüldü 17.10.2026)"
+    },
+    {
+      "id": "Ö-53",
+      "baslik": "Uyku zamanlayıcısı ('X dk sonra' / 'program bitince kapat')",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 24,
+      "guven": "🟡"
+    },
+    {
+      "id": "Ö-54",
+      "baslik": "Önceki kanal düğmesi",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 24,
+      "guven": "🟡",
+      "not": "Quick Win"
+    },
+    {
+      "id": "Ö-55",
+      "baslik": "Kanal kutusunda 'Sonra:' satırı",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 27,
+      "guven": "✅",
+      "not": "veri /epg sonraki'de var, yalnız title'da"
+    },
+    {
+      "id": "Ö-56",
+      "baslik": "Canlı önizleme (multipart akış, ~1,5-2 kare/sn, süre sınırlı)",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 18,
+      "guven": "✅",
+      "not": "ölçüm: kare 0,40 sn, ~100 KB"
+    },
+    {
+      "id": "Ö-57",
+      "baslik": "Favori kanalları arayüzden düzenleme",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 24,
+      "guven": "✅"
+    },
+    {
+      "id": "Ö-58",
+      "baslik": "TV ekranına bildirim (toast) — zamanlı geçiş öncesi",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 18,
+      "guven": "🟡",
+      "not": "bizim TV'lerde ölçülmedi"
+    },
+    {
+      "id": "Ö-59",
+      "baslik": "Ekranı kapat, ses açık",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 18,
+      "guven": "🟡",
+      "not": "bizim TV'lerde ölçülmedi"
+    },
+    {
+      "id": "Ö-60",
+      "baslik": "Ses seviyesi göstergesi + gece üst sınırı",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 12,
+      "guven": "✅"
+    },
+    {
+      "id": "Ö-61",
+      "baslik": "Kısayollar / Siri / Eylem Düğmesi için belirteçli dar uç",
+      "bolum": "özellik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 16,
+      "guven": "🟡"
+    },
+    {
+      "id": "Ö-62",
+      "baslik": "Zamanlayıcı çekirdeği ajanda (kalıcı JSON, 30 sn döngü, son tarihli kaçırma politikası)",
+      "bolum": "mimari",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 30,
+      "guven": "✅"
+    },
+    {
+      "id": "Ö-63",
+      "baslik": "Kaçırılan/başarısız görev telefona (ajan → panel web push)",
+      "bolum": "mimari",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 24,
+      "guven": "✅"
+    },
+    {
+      "id": "Ö-64",
+      "baslik": "Durum için yoklama yerine abonelik",
+      "bolum": "mimari",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 12,
+      "guven": "✅"
+    },
+    {
+      "id": "Ö-65",
+      "baslik": "Uyandırılan TV kendiliğinden kapanıyor mu — evde ölç",
+      "bolum": "mimari",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 18,
+      "guven": "🟡",
+      "not": "LG: Power On Timer ile açılan TV 2-4 sa sonra kapanır; WOL için kaynak yok"
+    },
+    {
+      "id": "Ö-66",
+      "baslik": "Misafir girişte zamanlayıcı yazma yetkisi yok",
+      "bolum": "güvenlik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 9,
+      "guven": "⚪"
+    },
+    {
+      "id": "Ö-67",
+      "baslik": "Zamanlayıcı uçlarına sınır (50 görev, izinli eylem, gece açma uyarısı)",
+      "bolum": "güvenlik",
+      "durum": "açık",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 9,
+      "guven": "⚪"
+    },
+    {
+      "id": "Ö-68",
+      "baslik": "Yön tuşları / OK",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 0,
+      "guven": "✅",
+      "not": "kullanıcı istemedi (17.10.2026: 'gerçek kumanda kullanırım')"
+    },
+    {
+      "id": "Ö-69",
+      "baslik": "Kumandanın yerel yolu (buluta çıkmadan)",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 0,
+      "guven": "✅",
+      "not": "ölçüldü: bulut 0,19-0,26 sn, yerel 0,045 sn; kullanıcı: yedek plan olarak kalsın → TODO.md"
+    },
+    {
+      "id": "Ö-70",
+      "baslik": "TV'nin kendi uyku/açılma zamanlayıcısını Luna ile ayarlamak",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 0,
+      "guven": "✅",
+      "not": "yazılabilirlik doğrulanmamış; webOS 24+'ta ekranda diyalog"
+    },
+    {
+      "id": "Ö-71",
+      "baslik": "Hazır Node zamanlayıcı kütüphanesi",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 0,
+      "guven": "✅",
+      "not": "kalıcılık/kaçırma politikası yok; kendi döngümüz"
+    },
+    {
+      "id": "Ö-72",
+      "baslik": "Kumanda kökeni için ayrı Web Push",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 0,
+      "guven": "✅",
+      "not": "panelin web push'u var; ajan → panel köprüsü yeter"
+    },
+    {
+      "id": "Ö-73",
+      "baslik": "LG uygulama başlatıcı",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 0,
+      "guven": "✅",
+      "not": "akış uygulamaları Apple TV'den"
+    },
+    {
+      "id": "Ö-74",
+      "baslik": "Metin girişi (IME)",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 0,
+      "guven": "✅",
+      "not": "gerçek kumanda/Apple TV kullanılıyor"
+    },
+    {
+      "id": "Ö-75",
+      "baslik": "Resim/ses modu değiştirme",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 0,
+      "guven": "✅",
+      "not": "eski yol diyalog gösteriyor, yeni yol doğrulanmadı"
+    },
+    {
+      "id": "Ö-76",
+      "baslik": "Ses/görüntü analiziyle reklam algılama",
+      "bolum": "özellik",
+      "durum": "vazgeçildi",
+      "ilk_gorulme": "2026-10-17",
+      "durum_tarihi": "2026-10-17",
+      "skor": 0,
+      "guven": "✅",
+      "not": "pahalı; sabit sayaç yeterli (ekran sayacı OCR fikri cesur bölümde)"
     }
   ],
   "arastirma": {
-    "tarih": "2026-10-13",
-    "mod": "odak: veritabanına toplu yazma yolu",
+    "tarih": "2026-10-17",
+    "mod": "odak: kumandaya eklenebilecek özellikler (zamanlama)",
     "ajan": {
       "baslatilan": 4,
-      "sonuc_veren": 3,
-      "not": "root/exploit durumu ajanı güvenlik filtresine takıldı; konu kapsamdan çıkarıldı"
+      "sonuc_veren": 4,
+      "ikinci_dalga": true
     },
-    "kaynak_satiri": 121,
-    "kaynak_dogrulanan": 98,
+    "arama_sayisi": null,
+    "arac_cagrisi": 344,
+    "kaynak_satiri": 156,
+    "kaynak_dogrulanan": 146,
     "benzer_projeler": [
-      "PredatH0r/ChanSort",
-      "robNice/lg-webos-channel-editor",
-      "shihsaway/lg-channel-editor",
-      "srcshelton/webos-channel-tool",
-      "mertparlak-zima/lg-channel-import",
-      "Woodstock99/ChanView",
-      "Motivesoft/lgTLL",
-      "Sofien-Touati/LG-TLL-Cleaner-script",
-      "ChannelEditor/LG"
+      "home-assistant/core webostv",
+      "klattimer/LGWebOSRemote",
+      "chros73/bscpylgtv",
+      "hobbyquaker/lgtv2",
+      "hobbyquaker/lgtv2mqtt",
+      "JPersson77/LGTVCompanion",
+      "merdok/homebridge-webos-tv",
+      "grzegorz914/homebridge-lgwebos-tv",
+      "madmicio/LG-WebOS-Remote-Control",
+      "nielsfaber/scheduler-card",
+      "postlund/pyatv"
     ],
     "onceki": {
-      "tarih": "2026-08-17",
-      "arama_sayisi": 30,
-      "kaynak_dogrulanan": 116
+      "tarih": "2026-10-13",
+      "mod": "odak: veritabanına toplu yazma yolu",
+      "kaynak_dogrulanan": 98
     }
   }
 }
