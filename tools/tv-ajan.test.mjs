@@ -15,7 +15,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digiturkAyristir, tvplusAyristir, simdiSonraki, trGunu, Rehber } from './net/rehber.mjs';
 import { sihirliPaket, yayinAdresi } from './net/wol.mjs';
-import { uyandir, Tv, sunucuKur } from './tv-ajan.mjs';
+import { uyandir, Tv, sunucuKur, gucKapaliMi } from './tv-ajan.mjs';
 import { Zamanlayici } from './net/zamanlayici.mjs';
 import { AppleTvKopru } from './net/atv-kopru.mjs';
 import { PassThrough } from 'node:stream';
@@ -728,4 +728,40 @@ test('köprü: yardımcıya satır başına JSON yazar, yanıtı numarasıyla e�
   assert.equal(surecler.length, 2, 'düşen süreç sonraki istekte yeniden başlar');
   const yok = new AppleTvKopru({ python: '/x', betik: '/x', depo: '/x', spawnFn, varMi: () => false });
   await assert.rejects(yok.iste(ATV, 'tus', { tus: 'up' }), (e) => e.kod === 409);
+});
+
+// ───────────────────────────────────────────── Ağ açık bekleme ("Active Standby")
+
+test('güç: bekleme/askı kapalı sayılır; "Screen Off" (ekran kapalı, ses açık) ve "Active" açık', () => {
+  for (const r of [{ state: 'Active Standby' }, { state: 'Suspend' }, { state: 'Active', processing: 'Request Power Off' }, { state: 'Power Off' }]) assert.equal(gucKapaliMi(r), true, JSON.stringify(r));
+  for (const r of [{ state: 'Active' }, { state: 'Screen Off' }, { state: 'Screen Saver' }, null]) assert.equal(gucKapaliMi(r), false, JSON.stringify(r));
+});
+
+test('beklemedeki TV (eski oturum yanıt veriyor): durum kapalı der, kanal düğmesi uyandırır', async () => {
+  const s = { guc: 'Active Standby', olaylar: [] };
+  const tv = new Tv({ id: 'salon', ad: 'Salon', ip: '192.0.2.11', mac: 'aa:bb:cc:dd:ee:01' }, 'anahtar', {
+    wol: async () => { s.olaylar.push('wol'); s.guc = 'Active'; },
+    uyanma: { sureMs: 10000, araMs: 1, wolAraMs: 1, bekle: async () => {}, simdi: (() => { let t = 0; return () => (t += 100); })() },
+  });
+  tv.baglan = async () => ({});   // oturum açık: bekleyen TV'de de kurulu kalıyor
+  tv.birak = () => { s.olaylar.push('birak'); };
+  tv.kanallar = async () => [{ no: 3, ad: 'KANAL D HD', channelId: 'k3' }];
+  let kanal = { channelNumber: '7', channelName: 'TRT 1 HD', channelId: 't7' };
+  tv.iste = async (uri, payload) => {
+    if (uri.endsWith('/getPowerState')) return { state: s.guc };
+    if (uri.endsWith('/getForegroundAppInfo')) return { appId: 'com.webos.app.livetv' };
+    if (uri === 'ssap://tv/getCurrentChannel') return kanal;
+    if (uri.endsWith('/listLaunchPoints')) return { launchPoints: [] };
+    if (uri === 'ssap://tv/getExternalInputList') return { devices: [] };
+    if (uri === 'ssap://tv/openChannel') { s.olaylar.push('kanal'); kanal = { channelNumber: '3', channelName: 'KANAL D HD', channelId: 'k3' }; }
+    return {};
+  };
+  const d = await tv.durum();
+  assert.equal(d.acik, false);
+  assert.match(d.sebep, /beklemede/);
+  assert.equal(await tv.hazirMi(), false);
+  const k = await tv.kanalAc({ ad: 'Kanal D' });
+  assert.equal(k.acildi, true);
+  assert.equal(s.olaylar.indexOf('wol') < s.olaylar.indexOf('kanal'), true, 'önce uyandırma, sonra kanal');
+  assert.equal((await tv.durum()).acik, true);
 });

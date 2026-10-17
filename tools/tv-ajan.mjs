@@ -150,6 +150,16 @@ function zamanAsimi(soz, ms, ne) {
  * Hazırsa hiç paket göndermez. Değilse sihirli paketi gönderir, `araMs`'de bir hazır mı diye
  * bakar, `wolAraMs`'de bir paketi yineler (Wi-Fi uykusundaki kart ilk paketi kaçırabilir).
  */
+/**
+ * LG güç durumları: kapatılan TV ağ bağlantısını açık tutan beklemeye geçer ("Active Standby"; webOS 26
+ * salon, 17.10.2026). O hâldeyken AÇIK KALAN SSAP oturumu yanıt vermeyi sürdürür (ön planda hâlâ
+ * "livetv" der), yeni oturumu ise TV kapatır. Yalnız "Screen Off"a bakan ilk sürüm bekleyen TV'yi açık
+ * sandı: kanal düğmesi uyandırmadan kanal değiştirdi, ekran kapalı kaldı. "Screen Off" (ekran kapalı,
+ * ses açık — bizim düğmemiz) ve "Screen Saver" AÇIK sayılır.
+ */
+const KAPALI_GUC = /standby|suspend|power ?off/i;
+export const gucKapaliMi = (r) => !!r && (KAPALI_GUC.test(String(r.state || '')) || KAPALI_GUC.test(String(r.processing || '')));
+
 export async function uyandir({ hazirMi, wol, sureMs = UYANMA_MS, araMs = 1500, wolAraMs = 5000, bekle = sleep, simdi = () => Date.now() }) {
   if (await hazirMi()) return { uyandirildi: false, wolSayisi: 0 };
   const bitis = simdi() + sureMs;
@@ -235,10 +245,18 @@ export class Tv {
   }
 
   async hazirMi() {
-    try { await this.baglan(); return true; } catch (e) {
+    try { await this.baglan(); } catch (e) {
       if (e instanceof HttpHata && e.kod === 409) throw e;   // anahtar yok: uyandırmak çözmez
       return false;
     }
+    // Bağlantı kurulu olabilir ama TV beklemede (yukarıdaki not): o zaman hazır değil, bağlantı bırakılır.
+    if (gucKapaliMi(await this.gucDurumu())) { this.birak(); return false; }
+    return true;
+  }
+
+  /** getPowerState yanıtı; uç yoksa (eski webOS) ya da hata olursa null — o zaman güç bilinmiyor sayılır. */
+  async gucDurumu() {
+    try { return await this.iste('ssap://com.webos.service.tvpower/power/getPowerState', null, 2000); } catch { return null; }
   }
 
   /** TV kapalıysa açar ve kumandaya hazır olana kadar bekler; açıksa hemen döner. */
@@ -279,6 +297,11 @@ export class Tv {
 
   async durum() {
     try {
+      const guc = await this.gucDurumu();
+      if (gucKapaliMi(guc)) {   // kapatılmış ama ağda bekliyor: kapalı göster, açmak uyandırma ister
+        this.birak();
+        return { id: this.id, ad: this.ad, acik: false, acilabilir: !!this.mac, sebep: `${this.ad}: beklemede (${guc.state || guc.processing})` };
+      }
       const on = await this.iste('ssap://com.webos.applicationManager/getForegroundAppInfo');
       const adlar = await this.adlar();
       let kanal = null;
@@ -295,8 +318,7 @@ export class Tv {
       if (!appleda) this.appleSon = null;
       const kaynak = on.appId === CANLI_TV ? 'canli' : (appleda ? (this.appleSon || 'apple') : (LG_KAYNAK[on.appId] || 'diger'));
       const cihaz = appleda ? 'apple' : 'lg';
-      let ekranKapali = null;
-      try { ekranKapali = (await this.iste('ssap://com.webos.service.tvpower/power/getPowerState', null, 2000)).state === 'Screen Off'; } catch { /* eski webOS */ }
+      const ekranKapali = guc ? guc.state === 'Screen Off' : null;
       return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kaynak, cihaz, appleTv: this.appleTvVar(), kanal, ekranKapali };
     } catch (e) {
       if (!this._baglaniyor) this.birak();
