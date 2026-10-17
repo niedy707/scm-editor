@@ -60,6 +60,14 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
       matrisi: hiçbiri kanal sıralamıyor, iki TV'yi birlikte gösteren yok), kullanıcı doğrudan uygulamaya
       geçti. Bulgular `scm-editor_tara.md`'ye eklenmeli.
 
+- [ ] **Uzaktan açılıştan sonra salon TV'de çıkan pencere (akşam, kullanıcıyla).** 16.10 22:10'da TV
+      uyandırılıp Kanal D'ye geçince ekranda bir pencere çıktı; kullanıcı panelden iki kez OK'a bastı
+      (22:11, 22:14 — ajan kaydı). Ne olduğu bilinmiyor. Plan: kullanıcı yanındayken salonu kapat → panelden
+      aç → hemen `ekran` ile görüntü + ön plandaki uygulama kimliği (`getForegroundAppInfo`). Her açılışta
+      çıkıyorsa ajan tanıyıp kapatabilir (`kanalAc` sonrası). Körlemesine OK basılmaz: ne onayladığı
+      bilinmeden "evet" demek istenmeyen bir ayarı kabul edebilir. ⛔ Oturma odası TV'si ile deneme yok
+      (kullanıcı 17.10: odada uyuyan var) — o TV için ayrıca izin beklenir.
+
 ## Sırada
 
 - [ ] **Ö-32 — USB ile dışa aktarımı dene (salon TV).** Menü 13.10.2026'da ekrandan doğrulandı:
