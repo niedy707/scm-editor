@@ -1,6 +1,6 @@
 # TODO — scm-editor
 
-> Son güncelleme: 16.10.2026
+> Son güncelleme: 17.10.2026
 
 Görev eklerken sadece başlık yazma: **ne yapılacak**, **nerede** (`dosya:satır`),
 **neden bekliyor** ve varsa **engeli** belirt. Kullanıcı bir karar verdiyse kararı da yaz.
@@ -39,8 +39,10 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
 
 - [ ] **Kullanıcının telefonda canlı denemesi.** Girişli sayfayı ben açamıyorum; panel → ajan yolu
       birim testleri + VPS'ten ajana doğrudan istekle doğrulandı, panel sürecinin içinden değil.
-- [ ] **16.10 değişikliklerini evde doğrula.** pi63'e ve panele 16.10.2026 akşamı kuruldu; rehber pi63'ten
-      çalışıyor (digiturk 108 kanal). Uzaktan açma henüz gerçek TV'de denenmedi.
+- [ ] **Uzaktan açmayı oturma odası TV'sinde doğrula.** 16.10.2026'da kuruldu. **Salon doğrulandı**
+      (16.10 22:10, kapalıyken Kanal D'ye basıldı → açılıp kanala geçti; kullanıcı: "çalışıyor").
+      Rehber pi63'ten çalışıyor, gece gün değişiminde yeni günü kendisi çekti (17.10 01:58, 108 kanal).
+      Kalan: oturma odası (55SM8000PLA — kapalıyken ağı tamamen kapanıyor, "Wi-Fi ile aç" ayarına bağlı).
       Kod hazır, testli (`npm test` → 27 ajan testi; aqara 375): rehberden EPG (`tools/net/rehber.mjs`),
       kapalı TV'yi Wake-on-LAN ile açıp kanalı açma (`tools/net/wol.mjs`, `tv-ajan.mjs` → `uyan`/`kanalAc`,
       yeni `/ac` ucu), panelde ⏻ Aç/Kapat. Kurulum: kaynak + `tv-ajan.tvler.json` (artık `mac` alanlı) pi63'e
