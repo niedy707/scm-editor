@@ -46,7 +46,8 @@ import http from 'node:http';
 import net from 'node:net';
 import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { mkdir, writeFile, readdir, unlink } from 'node:fs/promises';
+import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LgSsap } from './net/lg-ssap.mjs';
 import { LgInput } from './net/lg-input.mjs';
@@ -123,7 +124,7 @@ export async function uyandir({ hazirMi, wol, sureMs = UYANMA_MS, araMs = 1500, 
 }
 
 export class Tv {
-  constructor({ id, ad, ip, mac }, anahtar, { rehber = null, wol = wolGonder, uyanma = {} } = {}) {
+  constructor({ id, ad, ip, mac }, anahtar, { rehber = null, wol = wolGonder, uyanma = {}, teshisDizini = null, log = () => {} } = {}) {
     this.id = id;
     this.ad = ad;
     this.ip = ip;
@@ -131,7 +132,9 @@ export class Tv {
     this.anahtar = anahtar;
     this.rehber = rehber;
     this.wol = wol;
-    this.uyanma = uyanma;           // testler için: { sureMs, araMs, wolAraMs, bekle }
+    this.uyanma = uyanma;           // testler için: { sureMs, araMs, wolAraMs, bekle, simdi }
+    this.teshisDizini = teshisDizini; // uyanmada kanal tutmazsa ekran görüntüsü buraya
+    this.log = log;
     this.ssap = null;
     this.input = null;
     this._baglaniyor = null;
@@ -280,8 +283,13 @@ export class Tv {
     for (let i = 0; i < deneme; i++) {
       try {
         await this.iste('ssap://tv/openChannel', { channelId: k.channelId });
-        return { no: k.no, ad: k.ad, acildi: uyanma.uyandirildi };
+        if (!uyanma.uyandirildi) return { no: k.no, ad: k.ad, acildi: false };
+        const d = await this.kanalTuttuMu(k);
+        this.log(`[tv] ${this.id} uyanma sonrası kanal ${d.tuttu ? 'tuttu' : 'TUTMADI'} · iz ${d.iz} · yineleme ${d.yineleme}${d.goruntu ? ` · görüntü ${d.goruntu}` : ''}`);
+        if (!d.tuttu) throw new HttpHata(502, `${this.ad} açıldı ama ${k.ad} ekrana gelmedi (TV'de: ${d.son || 'bilinmiyor'}). Bir kez daha basın.`);
+        return { no: k.no, ad: k.ad, acildi: true, yineleme: d.yineleme };
       } catch (e) {
+        if (e instanceof HttpHata) throw e;
         son = e;
         // Kanal kimliği numarayı içerir; sıralamadan sonra önbellek bayatlamış olabilir.
         if (i === 0) { const t = bul(await this.kanallar({ taze: true }).catch(() => [])); if (t) k = t; }
@@ -289,6 +297,60 @@ export class Tv {
       }
     }
     throw son;
+  }
+
+  /**
+   * Yeni uyanmış TV kanal komutunu kabul edip ekrana getirmeyebiliyor: 16.10.2026'da saatlerce
+   * kapalı kalan salon TV'si "açıldı" yanıtına rağmen Kanal D'ye geçmedi, ekranda bir pencere
+   * vardı, kullanıcı ikinci kez basmak zorunda kaldı. 17.10'da 1 dk kapalı kalan TV'de sorun
+   * çıkmadı (yarı uyku, 4 sn'de açıldı). Ajan yanıtla yetinmez: kanal `kararliMs` boyunca
+   * ekranda kalana kadar TV'ye sorar, başka kanaldaysa komutu en çok 3 kez yineler. Tutmazsa
+   * ekran görüntüsünü saklar — pencerenin ne olduğu bir sonraki derin uykuda böyle öğrenilecek.
+   */
+  async kanalTuttuMu(k, { sureMs = 20000, araMs = 1500, kararliMs = 4000 } = {}) {
+    const bekle = this.uyanma.bekle || sleep;
+    const simdi = this.uyanma.simdi || Date.now;
+    const bitis = simdi() + sureMs;
+    const iz = [];
+    let tutmaBasi = null;
+    let yineleme = 0;
+    let son = null;
+    while (simdi() < bitis) {
+      await bekle(araMs);
+      let c = null;
+      let on = null;
+      try { c = await this.iste('ssap://tv/getCurrentChannel', null, 3000); } catch { /* henüz yok */ }
+      try { on = (await this.iste('ssap://com.webos.applicationManager/getForegroundAppInfo', null, 3000)).appId || null; } catch { /* yok */ }
+      const tuttu = !!c && (on == null || on === 'com.webos.app.livetv') && (c.channelId === k.channelId || Number(c.channelNumber) === k.no);
+      son = `${c ? `${Number(c.channelNumber)} ${c.channelName}` : 'kanal yok'}${on && on !== 'com.webos.app.livetv' ? ` · ön planda ${on}` : ''}`;
+      const imi = `${c ? Number(c.channelNumber) : '-'}${on && on !== 'com.webos.app.livetv' ? `@${on}` : ''}`;
+      if (iz.at(-1) !== imi) iz.push(imi);
+      if (tuttu) {
+        if (tutmaBasi == null) tutmaBasi = simdi();
+        if (simdi() - tutmaBasi >= kararliMs) return { tuttu: true, yineleme, iz: iz.join('→'), son };
+      } else {
+        tutmaBasi = null;
+        // Başka kanal ya da başka giriş (TV son HDMI girişinde açılmış olabilir): openChannel ikisini de düzeltir.
+        if (yineleme < 3) {
+          yineleme++;
+          await this.iste('ssap://tv/openChannel', { channelId: k.channelId }).catch(() => {});
+        }
+      }
+    }
+    const goruntu = await this.teshisGoruntusu().catch(() => null);
+    return { tuttu: tutmaBasi != null, yineleme, iz: iz.join('→'), son, goruntu };
+  }
+
+  /** Uyanma sorununu sonradan görebilmek için ekran görüntüsü (son 10'u tutulur). */
+  async teshisGoruntusu() {
+    if (!this.teshisDizini) return null;
+    const jpeg = await this.ekran();
+    await mkdir(this.teshisDizini, { recursive: true });
+    const ad = `uyanma-${this.id}-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
+    await writeFile(join(this.teshisDizini, ad), jpeg);
+    const eski = (await readdir(this.teshisDizini)).filter((f) => f.startsWith(`uyanma-${this.id}-`)).sort().slice(0, -10);
+    for (const f of eski) await unlink(join(this.teshisDizini, f)).catch(() => {});
+    return ad;
   }
 
   async cozumle(adlar) {
@@ -433,14 +495,14 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
   });
 }
 
-function tvleriYukle(rehber) {
+function tvleriYukle(rehber, teshisDizini) {
   if (!existsSync(TVLER_YOLU)) throw new Error(`TV listesi yok: ${TVLER_YOLU}`);
   const liste = JSON.parse(readFileSync(TVLER_YOLU, 'utf8'));
   const anahtarlar = existsSync(ANAHTAR_YOLU) ? JSON.parse(readFileSync(ANAHTAR_YOLU, 'utf8')) : {};
   return liste.map((t) => {
     if (!/^[a-z0-9-]{1,20}$/.test(t.id || '') || !t.ip) throw new Error(`geçersiz TV kaydı: ${JSON.stringify(t)}`);
     if (t.mac && !MAC_KALIBI.test(t.mac)) throw new Error(`geçersiz MAC (${t.id}): ${t.mac}`);
-    return new Tv(t, anahtarlar[t.ip] || null, { rehber });
+    return new Tv(t, anahtarlar[t.ip] || null, { rehber, teshisDizini, log: console.log });
   });
 }
 
@@ -451,7 +513,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exit(1);
   }
   const rehber = new Rehber({ dizin: DURUM_DIZINI, log: console.log });
-  const tvler = tvleriYukle(rehber);
+  const tvler = tvleriYukle(rehber, join(DURUM_DIZINI, 'teshis'));
   const sunucu = sunucuKur(tvler, { rehber });
   sunucu.listen(PORT, HOST, () => {
     const ozet = tvler.map((t) => `${t.id}${t.anahtar ? '' : ' (anahtarsız!)'}${t.mac ? '' : ' (MAC yok — açılamaz)'}`).join(', ');

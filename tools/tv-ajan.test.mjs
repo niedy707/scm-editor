@@ -9,7 +9,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -260,22 +260,42 @@ test('uyandir: açılmazsa zaman aşımı, paket sayısıyla', async () => {
 
 // ───────────────────────────────────────────── Tv: "her türlü o kanalı aç"
 
-/** SSAP'a hiç dokunmayan Tv: bağlantı/istek/kanal listesi sahte. */
-function sahteTv({ acik = false, acilirMi = true, mac = 'aa:bb:cc:dd:ee:ff', liste } = {}) {
+/**
+ * SSAP'a hiç dokunmayan Tv: bağlantı/istek/kanal listesi sahte, ekrandaki kanal durumlu.
+ * `geriAl`: uyanmadan sonraki ilk N kanal komutunu TV "kabul edip" uygulamaz (16.10.2026'da
+ * görülen: açılışını bitirirken son kanala döndü). `hepGeriAl`: hiç uygulamaz.
+ */
+function sahteTv({ acik = false, acilirMi = true, mac = 'aa:bb:cc:dd:ee:ff', liste, geriAl = 0, hepGeriAl = false, onPlan = 'com.webos.app.livetv', teshisDizini = null } = {}) {
   const s = sahteSaat();
   const olaylar = [];
-  const tv = new Tv({ id: 'oda', ad: 'Oda', ip: '192.0.2.10', mac }, 'anahtar', {
-    wol: async (m, ip) => { olaylar.push(`wol ${m} ${ip}`); if (acilirMi) acik = true; },
-    uyanma: { simdi: s.simdi, bekle: s.bekle },
-  });
-  tv.hazirMi = async () => acik;
-  tv.kanallar = async () => liste || [
+  const kanallar = liste || [
     { no: 3, ad: 'KANAL D HD', channelId: 'k3' },
     { no: 12, ad: 'CNN TÜRK HD', channelId: 'c12' },
   ];
-  tv.iste = async (uri, payload) => { olaylar.push(`${uri} ${JSON.stringify(payload)}`); return {}; };
-  return { tv, olaylar };
+  const durum = { kanal: { channelNumber: '7', channelName: 'TRT 1 HD', channelId: 't7' }, onPlan };
+  const tv = new Tv({ id: 'oda', ad: 'Oda', ip: '192.0.2.10', mac }, 'anahtar', {
+    wol: async (m, ip) => { olaylar.push(`wol ${m} ${ip}`); if (acilirMi) acik = true; },
+    uyanma: { simdi: s.simdi, bekle: s.bekle },
+    teshisDizini,
+  });
+  tv.hazirMi = async () => acik;
+  tv.kanallar = async () => kanallar;
+  tv.ekran = async () => Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  tv.iste = async (uri, payload) => {
+    if (uri === 'ssap://tv/getCurrentChannel') return durum.kanal;
+    if (uri.endsWith('/getForegroundAppInfo')) return { appId: durum.onPlan };
+    olaylar.push(`${uri} ${JSON.stringify(payload)}`);
+    if (uri === 'ssap://tv/openChannel' && !hepGeriAl && !(geriAl-- > 0)) {
+      const k = kanallar.find((x) => x.channelId === payload.channelId);
+      durum.kanal = { channelNumber: String(k.no), channelName: k.ad, channelId: k.channelId };
+      durum.onPlan = 'com.webos.app.livetv';
+    }
+    return {};
+  };
+  return { tv, olaylar, durum };
 }
+
+const kanalKomutlari = (olaylar) => olaylar.filter((o) => o.startsWith('ssap://tv/openChannel'));
 
 test('kanalAc: TV açıksa uyandırmadan doğrudan kanalı açar', async () => {
   const { tv, olaylar } = sahteTv({ acik: true });
@@ -288,6 +308,7 @@ test('kanalAc: TV kapalıysa önce açar, sonra kanalı açar', async () => {
   const { tv, olaylar } = sahteTv({ acik: false });
   const k = await tv.kanalAc({ ad: 'CNN Türk TV' });
   assert.equal(k.acildi, true);
+  assert.equal(k.yineleme, 0);
   assert.equal(k.no, 12);
   assert.equal(olaylar[0], 'wol aa:bb:cc:dd:ee:ff 192.0.2.10');
   assert.equal(olaylar.at(-1), 'ssap://tv/openChannel {"channelId":"c12"}');
@@ -301,6 +322,39 @@ test('kanalAc: yeni açılan TV ilk istekleri reddederse yeniden dener', async (
   const k = await tv.kanalAc({ no: 3 });
   assert.equal(k.no, 3);
   assert.equal(olaylar.filter((o) => o.startsWith('ssap://tv/openChannel')).length, 1);
+});
+
+test('kanalAc: uyanan TV son kanala dönerse fark edilir ve komut yinelenir', async () => {
+  const { tv, olaylar, durum } = sahteTv({ acik: false, geriAl: 1 });
+  const k = await tv.kanalAc({ ad: 'Kanal D' });
+  assert.deepEqual(k, { no: 3, ad: 'KANAL D HD', acildi: true, yineleme: 1 });
+  assert.equal(kanalKomutlari(olaylar).length, 2);
+  assert.equal(durum.kanal.channelId, 'k3');
+});
+
+test('kanalAc: TV son HDMI girişinde açılırsa canlı yayına geçirilir', async () => {
+  const { tv, durum } = sahteTv({ acik: false, onPlan: 'com.webos.app.hdmi1', geriAl: 1 });
+  const k = await tv.kanalAc({ ad: 'Kanal D' });
+  assert.equal(k.yineleme, 1);
+  assert.equal(durum.onPlan, 'com.webos.app.livetv');
+});
+
+test('kanalAc: kanal hiç tutmazsa "açıldı" denmez — 502 ve teşhis görüntüsü', async () => {
+  const dizin = mkdtempSync(join(tmpdir(), 'teshis-'));
+  try {
+    const { tv, olaylar } = sahteTv({ acik: false, hepGeriAl: true, teshisDizini: dizin });
+    await assert.rejects(tv.kanalAc({ ad: 'Kanal D' }), (e) => e.kod === 502 && /ekrana gelmedi/.test(e.message) && /7 TRT 1 HD/.test(e.message));
+    assert.equal(kanalKomutlari(olaylar).length, 4, 'ilk komut + en çok 3 yineleme');
+    const dosyalar = readdirSync(dizin);
+    assert.equal(dosyalar.length, 1);
+    assert.match(dosyalar[0], /^uyanma-oda-.*\.jpg$/);
+  } finally { rmSync(dizin, { recursive: true, force: true }); }
+});
+
+test('kanalAc: TV zaten açıksa doğrulama beklenmez (hızlı yol)', async () => {
+  const { tv, olaylar } = sahteTv({ acik: true, hepGeriAl: true });
+  assert.deepEqual(await tv.kanalAc({ ad: 'Kanal D' }), { no: 3, ad: 'KANAL D HD', acildi: false });
+  assert.equal(kanalKomutlari(olaylar).length, 1);
 });
 
 test('kanalAc: MAC yoksa 409, açılmazsa 504 ve ayar ipucu', async () => {
@@ -346,7 +400,7 @@ test('HTTP: /kanal kapalı TV\'yi açıp kanalı açar, /ac yalnız açar', asyn
   await sunucuyla([tv], {}, async (iste) => {
     const r = await iste('/kanal', { tv: 'oda', ad: 'Kanal D' });
     assert.equal(r.status, 200);
-    assert.deepEqual((await r.json()).kanal, { no: 3, ad: 'KANAL D HD', acildi: true });
+    assert.deepEqual((await r.json()).kanal, { no: 3, ad: 'KANAL D HD', acildi: true, yineleme: 0 });
     const a = await iste('/ac', { tv: 'oda' });
     assert.deepEqual(await a.json(), { ok: true, uyandirildi: false });
     assert.equal(olaylar.filter((o) => o.startsWith('wol')).length, 1);
