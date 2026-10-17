@@ -527,6 +527,49 @@ test('HTTP: ekranı kapat/aç ve TV mesajı (doğrulama)', async () => {
   });
 });
 
+test('HTTP: canlı önizleme — iki izleyici birbirini KESMEZ, tek çekim ikisine de dağıtılır', async () => {
+  const { tv } = sahteTv({ acik: true });
+  let kare = 0;
+  tv.ekran = async () => { kare++; await new Promise((r) => setTimeout(r, 10)); return Buffer.from([0xff, 0xd8, kare & 255, 0xff, 0xd9]); };
+  const s = sunucuKur([tv], { token: TOKEN, log: () => {} });
+  await new Promise((r) => s.listen(0, '127.0.0.1', r));
+  const ac = async () => {
+    const kes = new AbortController();
+    const r = await fetch(`http://127.0.0.1:${s.address().port}/ekran-akis?tv=oda&sn=30&fps=10`, { headers: { Authorization: `Bearer ${TOKEN}` }, signal: kes.signal });
+    const ok = r.body.getReader();
+    const oku = async (n) => { let m = ''; while ((m.match(/--kare/g) || []).length < n) m += Buffer.from((await ok.read()).value).toString('latin1'); return m; };
+    return { kes, oku };
+  };
+  const a = await ac();
+  const b = await ac();
+  await a.oku(3);
+  await b.oku(3);                      // ikincisi açıldıktan sonra birincisi de akmaya devam etmeli
+  await a.oku(2);
+  const iki = kare;
+  assert.ok(iki < 12, `tek çekim döngüsü: ${iki} kare çekildi (iki ayrı döngü olsaydı çok daha fazla)`);
+  a.kes.abort(); b.kes.abort();
+  await new Promise((r) => setTimeout(r, 300));
+  const once = kare;
+  await new Promise((r) => setTimeout(r, 300));
+  assert.ok(kare - once <= 1, 'izleyici kalmayınca çekim durmalı');
+  await new Promise((r) => s.close(r));
+});
+
+test('HTTP: canlı önizleme hızı fps ile sınırlanır (varsayılan 1 kare/sn)', async () => {
+  const { tv } = sahteTv({ acik: true });
+  let kare = 0;
+  tv.ekran = async () => { kare++; return Buffer.from([0xff, 0xd8, 1, 0xff, 0xd9]); };
+  const s = sunucuKur([tv], { token: TOKEN, log: () => {} });
+  await new Promise((r) => s.listen(0, '127.0.0.1', r));
+  const kes = new AbortController();
+  await fetch(`http://127.0.0.1:${s.address().port}/ekran-akis?tv=oda&sn=30`, { headers: { Authorization: `Bearer ${TOKEN}` }, signal: kes.signal });
+  await new Promise((r) => setTimeout(r, 1600));
+  kes.abort();
+  assert.ok(kare >= 1 && kare <= 3, `1,6 sn'de 1 kare/sn ile ${kare} kare`);
+  await new Promise((r) => setTimeout(r, 200));
+  await new Promise((r) => s.close(r));
+});
+
 test('HTTP: canlı önizleme art arda JPEG akıtır, istemci kopunca durur', async () => {
   const { tv } = sahteTv({ acik: true });
   let kare = 0;
@@ -534,7 +577,7 @@ test('HTTP: canlı önizleme art arda JPEG akıtır, istemci kopunca durur', asy
   const s = sunucuKur([tv], { token: TOKEN, log: () => {} });
   await new Promise((r) => s.listen(0, '127.0.0.1', r));
   const kes = new AbortController();
-  const r = await fetch(`http://127.0.0.1:${s.address().port}/ekran-akis?tv=oda&sn=30`, { headers: { Authorization: `Bearer ${TOKEN}` }, signal: kes.signal });
+  const r = await fetch(`http://127.0.0.1:${s.address().port}/ekran-akis?tv=oda&sn=30&fps=20`, { headers: { Authorization: `Bearer ${TOKEN}` }, signal: kes.signal });
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-type'), /multipart\/x-mixed-replace; boundary=kare/);
   const okuyucu = r.body.getReader();

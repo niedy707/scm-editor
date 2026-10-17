@@ -40,7 +40,7 @@
  *   POST /giris    {tv, hedef}      → hedef "canli" ya da "apple": canlı yayın ↔ Apple TV'nin HDMI girişi
  *   POST /ekran-guc {tv, kapali}    → ekranı kapat / aç (ses devam eder)
  *   POST /bildirim {tv, mesaj, sureSn} → TV ekranına mesaj (sureSn boyunca yenilenerek)
- *   GET  /ekran-akis?tv=&sn=        → canlı önizleme: art arda JPEG (multipart), TV başına tek akış
+ *   GET  /ekran-akis?tv=&sn=&fps=   → canlı önizleme: art arda JPEG (multipart); TV başına tek çekim, çok izleyici
  *   POST /akis     {adlar[], saat}  → kanalların yayın akışı (şu andan `saat` saat ileri; rehberden)
  *   GET  /zamanlayici               → geri dön sayaçları + program görevleri + geçmiş
  *   POST /zamanlayici {islem, …}    → geri-don | ekle | uzat | sil | etkin | hemen (bkz. net/zamanlayici.mjs)
@@ -90,6 +90,7 @@ const LISTE_OMRU_MS = 10 * 60 * 1000;
 // daha uzun gösterim için bu aralıkla yenilenir.
 const BILDIRIM_TAZELEME_MS = 4500;
 const AKIS_EN_UZUN_SN = 180;
+const AKIS_VARSAYILAN_FPS = 1;   // kullanıcı, 17.10.2026: "1 kare/sn" (ölçüm: kare ~100-170 KB → ~8,5 MB/dk)
 const UYANMA_MS = 40 * 1000;            // açılış + ağın gelmesi + SSAP'ın hazır olması
 const MAC_KALIBI = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -508,32 +509,51 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         return;
       }
       if (req.method === 'GET' && url.pathname === '/ekran-akis') {
-        // Canlı önizleme (kullanıcı, 17.10.2026). Kareler sıraya GİRMEZ (kumanda tuşları beklemesin); TV başına
-        // tek akış (yenisi eskisini kapatır); istemci yavaşsa 'drain' beklenir → okunmayan kare çekilmez.
+        // Canlı önizleme (kullanıcı, 17.10.2026: "ekran açık olduğu süre boyunca", hız 1 kare/sn).
+        // TV başına TEK kare çekim döngüsü; kareler o TV'yi izleyen BÜTÜN bağlantılara dağıtılır. (İlk sürüm
+        // "TV başına tek akış" diyordu: iki ekran açıkken akışlar birbirini kesip duruyordu — ölçüldü.)
+        // Her izleyici kendi hızını ister (fps); döngü en hızlı isteğe göre çeker, TV'nin sınırı ~2,5 kare/sn.
         const t = tvAl(url.searchParams.get('tv'));
         const sureMs = Math.min(Math.max(Number(url.searchParams.get('sn')) || 120, 5), AKIS_EN_UZUN_SN) * 1000;
-        t._akisKapat?.();
-        let bitti = false;
-        const kapat = () => { bitti = true; };
-        t._akisKapat = kapat;
-        req.on('close', kapat);
+        const fps = Math.min(Math.max(Number(url.searchParams.get('fps')) || AKIS_VARSAYILAN_FPS, 0.1), 3);
         res.writeHead(200, { 'Content-Type': 'multipart/x-mixed-replace; boundary=kare', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
-        const bas = Date.now();
-        let kare = 0;
-        let bayt = 0;
-        while (!bitti && Date.now() - bas < sureMs) {
-          let jpeg;
-          try { jpeg = await t.ekran(); } catch { await sleep(1000); continue; }
-          if (bitti) break;
-          const yazildi = res.write(`--kare\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`) & res.write(jpeg) & res.write('\r\n');
-          kare++;
-          bayt += jpeg.length;
-          if (!yazildi) await new Promise((ok) => { res.once('drain', ok); res.once('close', ok); });
+        const izleyici = { res, aralikMs: 1000 / fps, son: 0, bekliyor: false, bitis: Date.now() + sureMs, kare: 0, bayt: 0, bas: Date.now() };
+        t.izleyiciler ||= new Set();
+        t.izleyiciler.add(izleyici);
+        const ayril = () => {
+          if (!t.izleyiciler.delete(izleyici)) return;
+          const sn = (Date.now() - izleyici.bas) / 1000;
+          log(`[tv] ${t.id} canlı önizleme: ${izleyici.kare} kare / ${sn.toFixed(0)} sn (${(izleyici.kare / Math.max(sn, 1)).toFixed(1)} kare/sn), ${(izleyici.bayt / 1e6).toFixed(1)} MB · kalan izleyici ${t.izleyiciler.size}`);
+        };
+        izleyici.ayril = ayril;
+        req.on('close', ayril);
+        if (!t.akisDongusu) {
+          t.akisDongusu = (async () => {
+            while (t.izleyiciler.size) {
+              const simdi = Date.now();
+              for (const z of [...t.izleyiciler]) if (simdi >= z.bitis) { z.res.end(); z.ayril(); }
+              const vadeli = [...t.izleyiciler].filter((z) => simdi - z.son >= z.aralikMs - 50 && !z.bekliyor);
+              if (!vadeli.length) {
+                const bekle = Math.min(...[...t.izleyiciler].map((z) => Math.max(z.son + z.aralikMs - simdi, 50)), 1000);
+                await sleep(Number.isFinite(bekle) ? bekle : 200);
+                continue;
+              }
+              let jpeg;
+              try { jpeg = await t.ekran(); } catch { await sleep(1000); continue; }
+              const bas = `--kare\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`;
+              for (const z of vadeli) {
+                if (!t.izleyiciler.has(z)) continue;
+                const yazildi = z.res.write(bas) & z.res.write(jpeg) & z.res.write('\r\n');
+                z.son = Date.now();
+                z.kare++;
+                z.bayt += jpeg.length;
+                // Yavaş istemci: tampon boşalana kadar ona kare gönderilmez (okunmayan kare birikmez).
+                if (!yazildi) { z.bekliyor = true; z.res.once('drain', () => { z.bekliyor = false; }); }
+              }
+            }
+            t.akisDongusu = null;
+          })();
         }
-        if (t._akisKapat === kapat) t._akisKapat = null;
-        res.end();
-        const sn = (Date.now() - bas) / 1000;
-        log(`[tv] ${t.id} canlı önizleme: ${kare} kare / ${sn.toFixed(0)} sn (${(kare / sn).toFixed(1)} kare/sn), ${(bayt / 1e6).toFixed(1)} MB`);
         return;
       }
       if (req.method === 'POST' && url.pathname === '/akis') {
