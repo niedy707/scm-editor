@@ -635,3 +635,17 @@ test('HTTP: /akis kanalların akışını döndürür', async () => {
     assert.deepEqual(j.kanallar, [{ ad: 'TV8', programlar: [{ ad: 'MasterChef', bas: 1, bit: 2 }] }, { ad: 'ATV', programlar: [] }]);
   });
 });
+
+test('HTTP: /isaretci imleci oynatır ya da tıklar; geçersiz hareket 400', async () => {
+  const { tv } = sahteTv({ acik: true });
+  const gonderilen = [];
+  tv.kumanda = async () => ({ move: (dx, dy) => gonderilen.push(`move ${dx} ${dy}`), click: () => gonderilen.push('click') });
+  await sunucuyla([tv], {}, async (iste) => {
+    assert.equal((await iste('/isaretci', { tv: 'oda', dx: 12, dy: -7 })).status, 200);
+    assert.equal((await iste('/isaretci', { tv: 'oda', tikla: true })).status, 200);
+    for (const g of [{ dx: 1.5, dy: 0 }, { dx: 5000, dy: 0 }, { dx: 0, dy: 0 }, { dx: 'a', dy: 1 }]) {
+      assert.equal((await iste('/isaretci', { tv: 'oda', ...g })).status, 400);
+    }
+  });
+  assert.deepEqual(gonderilen, ['move 12 -7', 'click']);
+});

@@ -181,3 +181,20 @@ test('program: etiket (program adı) saklanır ve geçmişe taşınır', async (
   assert.equal(z.liste().gecmis[0].etiket, 'MasterChef Türkiye');
   z.durdur();
 });
+
+test('program: "X dk sonra" dakikası dakikasına kurulur, bir kez çalışır; sınır dışı süre 400', async () => {
+  const { z, saat, calisan, ilerle } = kur();
+  saat.t += 40000;   // 20:00:40 — dakika başında değil: saate yuvarlanmamalı
+  const g = await z.ekle({ tv: 'salon', kanal: 'NTV', zaman: { tur: 'sonra', dk: 5 } });
+  assert.equal(g.tur, 'tek');
+  assert.equal(g.an, saat.t + 5 * 60000);
+  await ilerle(5 * 60000 - 1000);
+  assert.equal(calisan.length, 0);
+  await ilerle(1000);
+  assert.equal(calisan.length, 1);
+  assert.equal(calisan[0].kanal.ad, 'NTV');
+  for (const dk of [0, 721, 1.5, 'beş']) {
+    await assert.rejects(z.ekle({ tv: 'salon', kanal: 'NTV', zaman: { tur: 'sonra', dk } }), (e) => e.kod === 400);
+  }
+  z.durdur();
+});

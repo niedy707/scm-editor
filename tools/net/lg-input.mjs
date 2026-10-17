@@ -57,6 +57,19 @@ export class LgInput {
     return key;
   }
 
+  /**
+   * Magic Remote imleci: göreli hareket (piksel). İlk hareket imleci ekranda gösterir.
+   * Protokol: `type:move`, `dx`, `dy`, `down:0` (basılı değil).
+   */
+  move(dx, dy) {
+    this._raw(['type:move', `dx:${Math.round(dx)}`, `dy:${Math.round(dy)}`, 'down:0']);
+  }
+
+  /** İmlecin bulunduğu yere tıklar (Magic Remote'un tekerine basmak). */
+  click() {
+    this._raw(['type:click']);
+  }
+
   /** Sırayla birden çok tuş. */
   async sequence(names, { settleMs = 350, onStep = () => {} } = {}) {
     const out = [];

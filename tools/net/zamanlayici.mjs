@@ -144,7 +144,7 @@ export class Zamanlayici {
     return g;
   }
 
-  /** Program görevi: bir kez (tarih + saat) ya da haftalık (günler + saat). */
+  /** Program görevi: bir kez (tarih + saat ya da X dk sonra) ya da haftalık (günler + saat). */
   async ekle({ tv, kanal, zaman, tvKapaliysa = 'ac', etiket = null }) {
     if (!kanal || typeof kanal !== 'string' || kanal.length > 60) throw new ZamanlayiciHata(400, 'kanal adı gerekli');
     if (etiket != null && (typeof etiket !== 'string' || etiket.length > 80)) throw new ZamanlayiciHata(400, 'etiket en çok 80 karakter');
@@ -154,7 +154,13 @@ export class Zamanlayici {
     }
     const simdi = this.simdi();
     let g;
-    if (zaman?.tur === 'tek') {
+    if (zaman?.tur === 'sonra') {
+      // "X dk sonra şu kanala git" (kanala basılı tutunca, kullanıcı 17.10.2026): dakikası dakikasına,
+      // saate yuvarlanmadan. Bir kez çalışan görevdir (tür "tek" olarak saklanır).
+      const dk = Number(zaman.dk);
+      if (!Number.isInteger(dk) || dk < 1 || dk > 720) throw new ZamanlayiciHata(400, 'süre 1-720 dk olmalı');
+      g = this._yeni({ tur: 'tek', tv, kanal: { ad: kanal }, an: simdi + dk * 60000, tvKapaliysa, ...(etiket ? { etiket } : {}) });
+    } else if (zaman?.tur === 'tek') {
       const an = trAn(zaman.tarih, zaman.saat);
       if (an <= simdi) throw new ZamanlayiciHata(400, 'bu an geçmişte');
       g = this._yeni({ tur: 'tek', tv, kanal: { ad: kanal }, an, tvKapaliysa, ...(etiket ? { etiket } : {}) });
@@ -164,7 +170,7 @@ export class Zamanlayici {
       if (!SAAT.test(String(zaman.saat || ''))) throw new ZamanlayiciHata(400, 'saat SS:DD olmalı');
       g = this._yeni({ tur: 'haftalik', tv, kanal: { ad: kanal }, saat: zaman.saat, gunler, an: sonrakiHaftalik(zaman.saat, gunler, simdi), tvKapaliysa, ...(etiket ? { etiket } : {}) });
     } else {
-      throw new ZamanlayiciHata(400, 'zaman türü tek ya da haftalik olmalı');
+      throw new ZamanlayiciHata(400, 'zaman türü tek, sonra ya da haftalik olmalı');
     }
     await this._ekleVeYaz(g);
     return g;

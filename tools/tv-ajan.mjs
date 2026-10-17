@@ -35,6 +35,7 @@
  *   GET  /tvler                     → her TV'nin durumu (+ açık kanalda şu an ne var)
  *   GET  /ekran?tv=<id>             → JPEG
  *   POST /tus      {tv, tus}        → kumanda tuşu
+ *   POST /isaretci {tv, dx, dy} | {tv, tikla: true} → Magic Remote imleci (kumandadaki dokunmatik yüzey)
  *   POST /kanal    {tv, ad | no}    → kanala geç — TV kapalıysa ÖNCE AÇAR (kullanıcı, 16.10.2026)
  *   POST /ac       {tv}             → TV'yi aç (Wake-on-LAN, açılana kadar bekler)
  *   POST /giris    {tv, hedef}      → kaynak menüsü: "canli", "apple" (HDMI girişi), "netflix" / "prime" / "disney" (TV uygulaması)
@@ -415,6 +416,15 @@ export class Tv {
     });
   }
 
+  /** Dokunmatik yüzey (kumanda → Ayarlar, 17.10.2026): imleci oynat ya da tıkla. */
+  async isaretci({ dx = 0, dy = 0, tikla = false }) {
+    const gonder = async () => {
+      const k = await this.kumanda();
+      if (tikla) k.click(); else k.move(dx, dy);
+    };
+    try { await gonder(); } catch { this.birak(); await gonder(); }   // soket sessizce düşmüş olabilir
+  }
+
   async tus(ad) {
     if (!IZINLI_TUSLAR.has(ad)) throw new HttpHata(400, `izinli olmayan tuş: ${ad}`);
     try {
@@ -622,6 +632,14 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
           const tus = String(g.tus || '').toUpperCase();
           await t.sirayla(() => t.tus(tus));
           log(`[tv] ${t.id} tuş ${tus}`);
+          json(res, 200, { ok: true });
+          return;
+        }
+        if (url.pathname === '/isaretci') {
+          const tikla = g.tikla === true;
+          const dx = Number(g.dx ?? 0), dy = Number(g.dy ?? 0);
+          if (!tikla && (![dx, dy].every((v) => Number.isInteger(v) && Math.abs(v) <= 2000) || (!dx && !dy))) throw new HttpHata(400, 'dx/dy tam sayı olmalı (en çok ±2000)');
+          await t.sirayla(() => t.isaretci({ dx, dy, tikla }));
           json(res, 200, { ok: true });
           return;
         }
