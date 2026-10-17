@@ -265,7 +265,7 @@ test('uyandir: açılmazsa zaman aşımı, paket sayısıyla', async () => {
  * `geriAl`: uyanmadan sonraki ilk N kanal komutunu TV "kabul edip" uygulamaz (16.10.2026'da
  * görülen: açılışını bitirirken son kanala döndü). `hepGeriAl`: hiç uygulamaz.
  */
-function sahteTv({ acik = false, acilirMi = true, mac = 'aa:bb:cc:dd:ee:ff', liste, geriAl = 0, hepGeriAl = false, onPlan = 'com.webos.app.livetv', teshisDizini = null } = {}) {
+function sahteTv({ acik = false, acilirMi = true, mac = 'aa:bb:cc:dd:ee:ff', liste, geriAl = 0, hepGeriAl = false, onPlan = 'com.webos.app.livetv', teshisDizini = null, girisler = [{ id: 'HDMI_2', label: 'Apple OTT', appId: 'com.webos.app.hdmi2' }] } = {}) {
   const s = sahteSaat();
   const olaylar = [];
   const kanallar = liste || [
@@ -284,6 +284,9 @@ function sahteTv({ acik = false, acilirMi = true, mac = 'aa:bb:cc:dd:ee:ff', lis
   tv.iste = async (uri, payload) => {
     if (uri === 'ssap://tv/getCurrentChannel') return durum.kanal;
     if (uri.endsWith('/getForegroundAppInfo')) return { appId: durum.onPlan };
+    if (uri === 'ssap://tv/getExternalInputList') return { devices: girisler };
+    if (uri.endsWith('/listLaunchPoints')) return { launchPoints: [] };
+    if (uri === 'ssap://system.launcher/launch') durum.onPlan = payload.id;
     olaylar.push(`${uri} ${JSON.stringify(payload)}`);
     if (uri === 'ssap://tv/openChannel' && !hepGeriAl && !(geriAl-- > 0)) {
       const k = kanallar.find((x) => x.channelId === payload.channelId);
@@ -369,6 +372,26 @@ test('kanalAc: bilinmeyen kanal 404', async () => {
   await assert.rejects(tv.kanalAc({ ad: 'Yok TV' }), (e) => e.kod === 404);
 });
 
+test('giriş: Apple TV, TV\'nin giriş adından bulunur; canlı yayına dönülür; durum kaynağı söyler', async () => {
+  const { tv, olaylar, durum } = sahteTv({ acik: true });
+  assert.deepEqual(await tv.girisDegistir('apple'), { kaynak: 'apple', uygulama: 'com.webos.app.hdmi2' });
+  assert.equal(durum.onPlan, 'com.webos.app.hdmi2');
+  assert.equal((await tv.durum()).kaynak, 'apple');
+  assert.deepEqual(await tv.girisDegistir('canli'), { kaynak: 'canli', uygulama: 'com.webos.app.livetv' });
+  assert.equal((await tv.durum()).kaynak, 'canli');
+  assert.equal(olaylar.filter((o) => o.startsWith('ssap://system.launcher/launch')).length, 2);
+});
+
+test('giriş: keyfi hedef 400, Apple TV girişi yoksa 404, kapalı TV önce açılır', async () => {
+  const { tv } = sahteTv({ acik: true });
+  await assert.rejects(tv.girisDegistir('com.netflix'), (e) => e.kod === 400);
+  const yok = sahteTv({ acik: true, girisler: [{ id: 'HDMI_1', label: 'HDMI 1', appId: 'com.webos.app.hdmi1' }] }).tv;
+  await assert.rejects(yok.girisDegistir('apple'), (e) => e.kod === 404 && /Apple TV girişi bulunamadı/.test(e.message));
+  const kapali = sahteTv({ acik: false });
+  await kapali.tv.girisDegistir('apple');
+  assert.equal(kapali.olaylar[0], 'wol aa:bb:cc:dd:ee:ff 192.0.2.10');
+});
+
 // ───────────────────────────────────────────── HTTP uçları
 
 const TOKEN = 'x'.repeat(40);
@@ -404,6 +427,16 @@ test('HTTP: /kanal kapalı TV\'yi açıp kanalı açar, /ac yalnız açar', asyn
     const a = await iste('/ac', { tv: 'oda' });
     assert.deepEqual(await a.json(), { ok: true, uyandirildi: false });
     assert.equal(olaylar.filter((o) => o.startsWith('wol')).length, 1);
+  });
+});
+
+test('HTTP: /giris yalnız iki hedef kabul eder', async () => {
+  const { tv } = sahteTv({ acik: true });
+  await sunucuyla([tv], {}, async (iste) => {
+    assert.equal((await iste('/giris', { tv: 'oda', hedef: 'youtube' })).status, 400);
+    const r = await iste('/giris', { tv: 'oda', hedef: 'apple' });
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), { ok: true, kaynak: 'apple', uygulama: 'com.webos.app.hdmi2' });
   });
 });
 

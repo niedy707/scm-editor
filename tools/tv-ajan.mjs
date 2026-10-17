@@ -37,6 +37,7 @@
  *   POST /tus      {tv, tus}        → kumanda tuşu
  *   POST /kanal    {tv, ad | no}    → kanala geç — TV kapalıysa ÖNCE AÇAR (kullanıcı, 16.10.2026)
  *   POST /ac       {tv}             → TV'yi aç (Wake-on-LAN, açılana kadar bekler)
+ *   POST /giris    {tv, hedef}      → hedef "canli" ya da "apple": canlı yayın ↔ Apple TV'nin HDMI girişi
  *   POST /cozumle  {tv, adlar[]}    → adları o TV'deki kanal numaralarına çevir
  *   POST /epg      {tv, adlar[]}    → bu kanallarda şu an ve sonra ne var (rehberden)
  *   POST /kapat    {tv}             → TV'yi kapat
@@ -72,6 +73,10 @@ export const IZINLI_TUSLAR = new Set([
   'RED', 'GREEN', 'YELLOW', 'BLUE',
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
 ]);
+
+/** Giriş geçişinin hedefleri — keyfi uygulama başlatılamaz. */
+export const GIRIS_HEDEFLERI = new Set(['canli', 'apple']);
+const CANLI_TV = 'com.webos.app.livetv';
 
 const LISTE_OMRU_MS = 10 * 60 * 1000;
 const UYANMA_MS = 40 * 1000;            // açılış + ağın gelmesi + SSAP'ın hazır olması
@@ -142,6 +147,7 @@ export class Tv {
     this.liste = null;
     this.listeZamani = 0;
     this.uygulamaAdlari = null;
+    this.appleUygulama = null;      // Apple TV'nin bağlı olduğu HDMI girişinin uygulama kimliği
   }
 
   /** Aynı TV'ye işler sırayla gider: iki tuş birbirinin ortasına girmez. */
@@ -223,7 +229,11 @@ export class Tv {
     try {
       // HDMI girişlerinin kullanıcının verdiği adı ("Apple TV 1") burada.
       const r = await this.iste('ssap://tv/getExternalInputList');
-      for (const d of r.devices || []) if (d.appId && d.label) m.set(d.appId, d.label);
+      for (const d of r.devices || []) {
+        if (d.appId && d.label) m.set(d.appId, d.label);
+        // Apple TV hangi HDMI'da: kullanıcının girişe verdiği ad ("Apple OTT", "Apple TV 1").
+        if (!this.appleUygulama && d.appId && /apple/i.test(d.label || '')) this.appleUygulama = d.appId;
+      }
     } catch { /* yok say */ }
     this.uygulamaAdlari = m;
     return m;
@@ -243,7 +253,8 @@ export class Tv {
           }
         } catch { /* kanal okunamadı */ }
       }
-      return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kanal };
+      const kaynak = on.appId === CANLI_TV ? 'canli' : (on.appId && on.appId === this.appleUygulama ? 'apple' : 'diger');
+      return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kaynak, kanal };
     } catch (e) {
       if (!this._baglaniyor) this.birak();
       return { id: this.id, ad: this.ad, acik: false, acilabilir: !!this.mac, sebep: String(e.message || e).split('\n')[0].slice(0, 120) };
@@ -351,6 +362,20 @@ export class Tv {
     const eski = (await readdir(this.teshisDizini)).filter((f) => f.startsWith(`uyanma-${this.id}-`)).sort().slice(0, -10);
     for (const f of eski) await unlink(join(this.teshisDizini, f)).catch(() => {});
     return ad;
+  }
+
+  /** Canlı yayın ↔ Apple TV (kumanda tasarımı, 17.10.2026). TV kapalıysa önce açılır. */
+  async girisDegistir(hedef) {
+    if (!GIRIS_HEDEFLERI.has(hedef)) throw new HttpHata(400, `geçersiz giriş: ${hedef}`);
+    await this.uyan();
+    let uygulama = CANLI_TV;
+    if (hedef === 'apple') {
+      await this.adlar();
+      uygulama = this.appleUygulama;
+      if (!uygulama) throw new HttpHata(404, `${this.ad}: Apple TV girişi bulunamadı (TV'nin giriş adlarında "Apple" yok)`);
+    }
+    await this.iste('ssap://system.launcher/launch', { id: uygulama });
+    return { kaynak: hedef, uygulama };
   }
 
   async cozumle(adlar) {
@@ -461,6 +486,14 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
           const r = await t.sirayla(() => t.uyan());
           log(`[tv] ${t.id} ${r.uyandirildi ? `açıldı (${r.wolSayisi} paket)` : 'zaten açık'}`);
           json(res, 200, { ok: true, uyandirildi: r.uyandirildi });
+          return;
+        }
+        if (url.pathname === '/giris') {
+          const hedef = String(g.hedef || '');
+          if (!GIRIS_HEDEFLERI.has(hedef)) throw new HttpHata(400, 'geçersiz giriş');
+          const r = await t.sirayla(() => t.girisDegistir(hedef));
+          log(`[tv] ${t.id} giriş → ${hedef} (${r.uygulama})`);
+          json(res, 200, { ok: true, ...r });
           return;
         }
         if (url.pathname === '/cozumle') {
