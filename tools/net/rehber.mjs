@@ -25,8 +25,16 @@ const TAZELIK_MS = 6 * 60 * 60 * 1000;   // bir günün sayfası en çok 6 saatt
 const HATA_BEKLEME_MS = 15 * 60 * 1000;  // başarısız çekişten sonra 3,3 MB'ı hemen yeniden isteme
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
-/** tvplus kanal kimlikleri (iptv-org/epg `tvplus.com.tr.channels.xml`). Anahtar: anaAd. */
-export const TVPLUS_KIMLIK = { KANALD: '88', STAR: '89', SHOW: '130', HABERTURK: '87', CNNTURK: '158' };
+/**
+ * tvplus kanal kimlikleri (iptv-org/epg `sites/tvplus.com.tr/tvplus.com.tr.channels.xml`, 17.10.2026). Anahtar:
+ * anaAd. 17.10.2026'da genişletildi: digiturk'ün sayfasında ATV, TV8, Kanal D gibi kanalların akşam kuşağı
+ * (20:00 sonrası) EKSİK geliyor — "şu an ne var" o saatlerde yalnız bu yedekten gelebiliyor.
+ */
+export const TVPLUS_KIMLIK = {
+  KANALD: '88', STAR: '89', SHOW: '130', HABERTURK: '87', CNNTURK: '158',
+  ATV: '124', TV8: '134', TV85: '188', NOW: '93', NTV: '81', BLOOMBERGHT: '96', TRT1: '144',
+  KANAL7: '90', BEYAZ: '135', HALK: '91', SOZCU: '4294', TRTHABER: '30', AHABER: '160', 360: '86',
+};
 
 /** İstanbul takvim günü: { y, m, d } ve ISO anahtarı. */
 export function trGunu(ms) {

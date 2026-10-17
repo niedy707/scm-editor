@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { digiturkAyristir, tvplusAyristir, simdiSonraki, trGunu, Rehber } from './net/rehber.mjs';
 import { sihirliPaket, yayinAdresi } from './net/wol.mjs';
 import { uyandir, Tv, sunucuKur } from './tv-ajan.mjs';
+import { Zamanlayici } from './net/zamanlayici.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ORNEK = readFileSync(join(ROOT, 'fixtures/rehber/digiturk-ornek.html'), 'utf8');
@@ -285,6 +286,7 @@ function sahteTv({ acik = false, acilirMi = true, mac = 'aa:bb:cc:dd:ee:ff', lis
     if (uri === 'ssap://tv/getCurrentChannel') return durum.kanal;
     if (uri.endsWith('/getForegroundAppInfo')) return { appId: durum.onPlan };
     if (uri === 'ssap://tv/getExternalInputList') return { devices: girisler };
+    if (uri.endsWith('/getPowerState')) return { state: 'Active' };
     if (uri.endsWith('/listLaunchPoints')) return { launchPoints: [] };
     if (uri === 'ssap://system.launcher/launch') durum.onPlan = payload.id;
     olaylar.push(`${uri} ${JSON.stringify(payload)}`);
@@ -473,4 +475,75 @@ test('HTTP: /tvler bir TV uyandırılırken sırada beklemez', async () => {
     assert.deepEqual(r, { tvler: [{ id: 'oda', acik: true }] });
   });
   birak();
+});
+
+// ───────────────────────────────────────────── 17.10.2026: zamanlayıcı, ekran, mesaj, canlı önizleme
+
+test('HTTP: geri dön sayacı o anki kanala kurulur; canlı yayında değilse 409', async () => {
+  const { tv, durum } = sahteTv({ acik: true });
+  durum.kanal = { channelNumber: '3', channelName: 'KANAL D HD', channelId: 'k3' };
+  const zamanlayici = new Zamanlayici({ calistir: async () => ({ sonuc: 'ok' }) });
+  await sunucuyla([tv], { zamanlayici }, async (iste) => {
+    const r = await iste('/zamanlayici', { islem: 'geri-don', tv: 'oda', dk: 8 });
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.deepEqual(j.sonuc.kanal, { no: 3, ad: 'KANAL D HD' });
+    assert.equal(j.gorevler.length, 1);
+    assert.equal((await iste('/zamanlayici', { islem: 'geri-don', tv: 'oda', dk: 0 })).status, 400);
+    assert.equal((await iste('/zamanlayici', { islem: 'bilinmeyen' })).status, 400);
+    assert.equal((await iste('/zamanlayici', { islem: 'sil', id: 'yok' })).status, 404);
+    durum.onPlan = 'com.webos.app.hdmi2';
+    assert.equal((await iste('/zamanlayici', { islem: 'geri-don', tv: 'oda', dk: 5 })).status, 409);
+    const l = await (await iste('/zamanlayici')).json();
+    assert.equal(l.gorevler.length, 1);
+  });
+  zamanlayici.durdur();
+});
+
+test('HTTP: program görevi eklenir ve listelenir', async () => {
+  const { tv } = sahteTv({ acik: true });
+  const zamanlayici = new Zamanlayici({ calistir: async () => ({ sonuc: 'ok' }) });
+  await sunucuyla([tv], { zamanlayici }, async (iste) => {
+    const r = await iste('/zamanlayici', { islem: 'ekle', tv: 'oda', kanal: 'TV8', zaman: { tur: 'haftalik', saat: '21:00', gunler: [1, 2, 3, 4, 5] }, tvKapaliysa: 'ac' });
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.gorevler[0].tur, 'haftalik');
+    assert.equal(j.gorevler[0].kanal.ad, 'TV8');
+    assert.equal((await iste('/zamanlayici', { islem: 'ekle', tv: 'yok', kanal: 'TV8', zaman: { tur: 'tek', tarih: '2030-01-01', saat: '10:00' } })).status, 404);
+  });
+  zamanlayici.durdur();
+});
+
+test('HTTP: ekranı kapat/aç ve TV mesajı (doğrulama)', async () => {
+  const { tv, olaylar } = sahteTv({ acik: true });
+  await sunucuyla([tv], {}, async (iste) => {
+    assert.deepEqual(await (await iste('/ekran-guc', { tv: 'oda', kapali: true })).json(), { ok: true, ekranKapali: true });
+    assert.ok(olaylar.some((o) => o.includes('power/turnOffScreen')));
+    assert.equal((await iste('/bildirim', { tv: 'oda', mesaj: 'Yemek hazır', sureSn: 5 })).status, 200);
+    assert.ok(olaylar.some((o) => o.includes('createToast') && o.includes('Yemek hazır')));
+    assert.equal((await iste('/bildirim', { tv: 'oda', mesaj: '', sureSn: 5 })).status, 400);
+    assert.equal((await iste('/bildirim', { tv: 'oda', mesaj: 'x'.repeat(161), sureSn: 5 })).status, 400);
+    assert.equal((await iste('/bildirim', { tv: 'oda', mesaj: 'a', sureSn: 500 })).status, 400);
+  });
+});
+
+test('HTTP: canlı önizleme art arda JPEG akıtır, istemci kopunca durur', async () => {
+  const { tv } = sahteTv({ acik: true });
+  let kare = 0;
+  tv.ekran = async () => { kare++; await new Promise((r) => setTimeout(r, 20)); return Buffer.from([0xff, 0xd8, kare, 0xff, 0xd9]); };
+  const s = sunucuKur([tv], { token: TOKEN, log: () => {} });
+  await new Promise((r) => s.listen(0, '127.0.0.1', r));
+  const kes = new AbortController();
+  const r = await fetch(`http://127.0.0.1:${s.address().port}/ekran-akis?tv=oda&sn=30`, { headers: { Authorization: `Bearer ${TOKEN}` }, signal: kes.signal });
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /multipart\/x-mixed-replace; boundary=kare/);
+  const okuyucu = r.body.getReader();
+  let metin = '';
+  while ((metin.match(/--kare/g) || []).length < 3) metin += Buffer.from((await okuyucu.read()).value).toString('latin1');
+  kes.abort();
+  await new Promise((r2) => setTimeout(r2, 150));
+  const once = kare;
+  await new Promise((r2) => setTimeout(r2, 200));
+  assert.ok(kare - once <= 1, 'istemci kopunca kare çekimi durmalı');
+  await new Promise((r2) => s.close(r2));
 });

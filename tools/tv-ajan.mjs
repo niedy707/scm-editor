@@ -38,6 +38,11 @@
  *   POST /kanal    {tv, ad | no}    → kanala geç — TV kapalıysa ÖNCE AÇAR (kullanıcı, 16.10.2026)
  *   POST /ac       {tv}             → TV'yi aç (Wake-on-LAN, açılana kadar bekler)
  *   POST /giris    {tv, hedef}      → hedef "canli" ya da "apple": canlı yayın ↔ Apple TV'nin HDMI girişi
+ *   POST /ekran-guc {tv, kapali}    → ekranı kapat / aç (ses devam eder)
+ *   POST /bildirim {tv, mesaj, sureSn} → TV ekranına mesaj (sureSn boyunca yenilenerek)
+ *   GET  /ekran-akis?tv=&sn=        → canlı önizleme: art arda JPEG (multipart), TV başına tek akış
+ *   GET  /zamanlayici               → geri dön sayaçları + program görevleri + geçmiş
+ *   POST /zamanlayici {islem, …}    → geri-don | ekle | uzat | sil | etkin | hemen (bkz. net/zamanlayici.mjs)
  *   POST /cozumle  {tv, adlar[]}    → adları o TV'deki kanal numaralarına çevir
  *   POST /epg      {tv, adlar[]}    → bu kanallarda şu an ve sonra ne var (rehberden)
  *   POST /kapat    {tv}             → TV'yi kapat
@@ -56,6 +61,7 @@ import { captureScreen } from './net/lg-screen.mjs';
 import { kanalBul } from './net/kanal-bul.mjs';
 import { Rehber, trGunu } from './net/rehber.mjs';
 import { wolGonder } from './net/wol.mjs';
+import { Zamanlayici } from './net/zamanlayici.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -79,6 +85,10 @@ export const GIRIS_HEDEFLERI = new Set(['canli', 'apple']);
 const CANLI_TV = 'com.webos.app.livetv';
 
 const LISTE_OMRU_MS = 10 * 60 * 1000;
+// TV bildirimi (toast) ekranda ~4-5 sn kalıyor (17.10.2026, salon: 3,4 sn'de var, 5,8 sn'de yok) →
+// daha uzun gösterim için bu aralıkla yenilenir.
+const BILDIRIM_TAZELEME_MS = 4500;
+const AKIS_EN_UZUN_SN = 180;
 const UYANMA_MS = 40 * 1000;            // açılış + ağın gelmesi + SSAP'ın hazır olması
 const MAC_KALIBI = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -254,7 +264,9 @@ export class Tv {
         } catch { /* kanal okunamadı */ }
       }
       const kaynak = on.appId === CANLI_TV ? 'canli' : (on.appId && on.appId === this.appleUygulama ? 'apple' : 'diger');
-      return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kaynak, kanal };
+      let ekranKapali = null;
+      try { ekranKapali = (await this.iste('ssap://com.webos.service.tvpower/power/getPowerState', null, 2000)).state === 'Screen Off'; } catch { /* eski webOS */ }
+      return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kaynak, kanal, ekranKapali };
     } catch (e) {
       if (!this._baglaniyor) this.birak();
       return { id: this.id, ad: this.ad, acik: false, acilabilir: !!this.mac, sebep: String(e.message || e).split('\n')[0].slice(0, 120) };
@@ -278,7 +290,7 @@ export class Tv {
    * son girişte (HDMI) başlayabilir — openChannel canlı yayına zaten geçirir. Yeni açılmış
    * TV'de canlı yayın birkaç saniye hazır olmayabilir, bu yüzden birkaç deneme.
    */
-  async kanalAc({ ad, no }) {
+  async kanalAc({ ad, no, dogrula = false }) {
     const uyanma = await this.uyan();
     const bekle = this.uyanma.bekle || sleep;
     const deneme = uyanma.uyandirildi ? 5 : 2;
@@ -294,11 +306,12 @@ export class Tv {
     for (let i = 0; i < deneme; i++) {
       try {
         await this.iste('ssap://tv/openChannel', { channelId: k.channelId });
-        if (!uyanma.uyandirildi) return { no: k.no, ad: k.ad, acildi: false };
+        // Zamanlanmış geçişte (dogrula) kimse ekrana bakmıyor: kanalın tuttuğu her durumda denetlenir.
+        if (!uyanma.uyandirildi && !dogrula) return { no: k.no, ad: k.ad, acildi: false };
         const d = await this.kanalTuttuMu(k);
         this.log(`[tv] ${this.id} uyanma sonrası kanal ${d.tuttu ? 'tuttu' : 'TUTMADI'} · iz ${d.iz} · yineleme ${d.yineleme}${d.goruntu ? ` · görüntü ${d.goruntu}` : ''}`);
-        if (!d.tuttu) throw new HttpHata(502, `${this.ad} açıldı ama ${k.ad} ekrana gelmedi (TV'de: ${d.son || 'bilinmiyor'}). Bir kez daha basın.`);
-        return { no: k.no, ad: k.ad, acildi: true, yineleme: d.yineleme };
+        if (!d.tuttu) throw new HttpHata(502, `${this.ad}: ${k.ad} ekrana gelmedi (TV'de: ${d.son || 'bilinmiyor'}). Bir kez daha basın.`);
+        return { no: k.no, ad: k.ad, acildi: uyanma.uyandirildi, yineleme: d.yineleme };
       } catch (e) {
         if (e instanceof HttpHata) throw e;
         son = e;
@@ -397,6 +410,43 @@ export class Tv {
     }
   }
 
+  /** Canlı yayında açık kanal — "geri dön" sayacının varsayılan hedefi. */
+  async simdikiKanal() {
+    const on = await this.iste('ssap://com.webos.applicationManager/getForegroundAppInfo');
+    if (on.appId !== CANLI_TV) throw new HttpHata(409, `${this.ad} canlı yayında değil — geri dönülecek kanal yok`);
+    const c = await this.iste('ssap://tv/getCurrentChannel');
+    return { no: Number(c.channelNumber), ad: c.channelName };
+  }
+
+  /** Ekranı kapat / aç, ses devam eder (17.10.2026, salon webOS 26'da ölçüldü: ~40 ms). webOS < 4.5 eski uç. */
+  async ekranAyarla(kapali) {
+    const u = kapali ? 'turnOffScreen' : 'turnOnScreen';
+    try {
+      await this.iste(`ssap://com.webos.service.tvpower/power/${u}`);
+    } catch (e) {
+      if (!/404|no such/i.test(String(e.message))) throw e;
+      await this.iste(`ssap://com.webos.service.tv.power/${u}`);
+    }
+    return { ekranKapali: !!kapali };
+  }
+
+  async toast(mesaj) {
+    await this.iste('ssap://system.notifications/createToast', { message: String(mesaj).slice(0, 160) });
+  }
+
+  /** Mesajı `sureSn` boyunca ekranda tutar (TV bildirimi ~5 sn'de kapatıyor → yenilenir). Yenisi eskisini keser. */
+  async bildirimGoster(mesaj, sureSn) {
+    clearInterval(this._bildirimT);
+    await this.toast(mesaj);                       // ilki beklenir: TV kapalıysa hata kullanıcıya döner
+    const bitis = Date.now() + sureSn * 1000;
+    if (sureSn * 1000 <= BILDIRIM_TAZELEME_MS + 500) return;
+    this._bildirimT = setInterval(() => {
+      if (Date.now() + 1000 >= bitis) { clearInterval(this._bildirimT); return; }
+      this.toast(mesaj).catch(() => clearInterval(this._bildirimT));
+    }, BILDIRIM_TAZELEME_MS);
+    this._bildirimT.unref?.();
+  }
+
   async ekran() {
     return captureScreen(await this.baglan(), { timeoutMs: 8000 });
   }
@@ -438,7 +488,7 @@ async function govdeOku(req, sinir = 4096) {
 
 const adListesi = (g, en) => (Array.isArray(g.adlar) ? g.adlar.slice(0, en).map((a) => String(a).slice(0, 60)) : []);
 
-export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null } = {}) {
+export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null } = {}) {
   const byId = new Map(tvler.map((t) => [t.id, t]));
   const tvAl = (id) => {
     const t = byId.get(String(id || ''));
@@ -454,6 +504,61 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         // Sıraya GİRMEZ: bir TV uyandırılırken (≤40 sn) panelin durum sorgusu beklememeli.
         const durumlar = await Promise.all(tvler.map((t) => t.durum()));
         json(res, 200, { tvler: durumlar });
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/ekran-akis') {
+        // Canlı önizleme (kullanıcı, 17.10.2026). Kareler sıraya GİRMEZ (kumanda tuşları beklemesin); TV başına
+        // tek akış (yenisi eskisini kapatır); istemci yavaşsa 'drain' beklenir → okunmayan kare çekilmez.
+        const t = tvAl(url.searchParams.get('tv'));
+        const sureMs = Math.min(Math.max(Number(url.searchParams.get('sn')) || 120, 5), AKIS_EN_UZUN_SN) * 1000;
+        t._akisKapat?.();
+        let bitti = false;
+        const kapat = () => { bitti = true; };
+        t._akisKapat = kapat;
+        req.on('close', kapat);
+        res.writeHead(200, { 'Content-Type': 'multipart/x-mixed-replace; boundary=kare', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+        const bas = Date.now();
+        let kare = 0;
+        let bayt = 0;
+        while (!bitti && Date.now() - bas < sureMs) {
+          let jpeg;
+          try { jpeg = await t.ekran(); } catch { await sleep(1000); continue; }
+          if (bitti) break;
+          const yazildi = res.write(`--kare\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.length}\r\n\r\n`) & res.write(jpeg) & res.write('\r\n');
+          kare++;
+          bayt += jpeg.length;
+          if (!yazildi) await new Promise((ok) => { res.once('drain', ok); res.once('close', ok); });
+        }
+        if (t._akisKapat === kapat) t._akisKapat = null;
+        res.end();
+        const sn = (Date.now() - bas) / 1000;
+        log(`[tv] ${t.id} canlı önizleme: ${kare} kare / ${sn.toFixed(0)} sn (${(kare / sn).toFixed(1)} kare/sn), ${(bayt / 1e6).toFixed(1)} MB`);
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/zamanlayici') {
+        if (!zamanlayici) throw new HttpHata(503, 'zamanlayıcı kurulu değil');
+        json(res, 200, zamanlayici.liste());
+        return;
+      }
+      if (req.method === 'POST' && url.pathname === '/zamanlayici') {
+        if (!zamanlayici) throw new HttpHata(503, 'zamanlayıcı kurulu değil');
+        const g = await govdeOku(req);
+        const islem = String(g.islem || '');
+        let sonuc;
+        if (islem === 'geri-don') {
+          const t = tvAl(g.tv);
+          const kanal = await t.sirayla(() => t.simdikiKanal());
+          sonuc = await zamanlayici.geriDon({ tv: t.id, dk: g.dk, kanal });
+        } else if (islem === 'ekle') {
+          const t = tvAl(g.tv);
+          sonuc = await zamanlayici.ekle({ tv: t.id, kanal: g.kanal, zaman: g.zaman, tvKapaliysa: g.tvKapaliysa });
+        } else if (islem === 'uzat') sonuc = await zamanlayici.uzat(g.id, g.dk ?? 1);
+        else if (islem === 'sil') sonuc = await zamanlayici.sil(g.id);
+        else if (islem === 'etkin') sonuc = await zamanlayici.etkin(g.id, g.acik);
+        else if (islem === 'hemen') sonuc = await zamanlayici.hemen(g.id);
+        else throw new HttpHata(400, 'bilinmeyen işlem');
+        log(`[tv] zamanlayıcı ${islem}${g.tv ? ` ${g.tv}` : ''}${g.id ? ` ${g.id}` : ''}`);
+        json(res, 200, { ok: true, sonuc, ...zamanlayici.liste() });
         return;
       }
       if (req.method === 'GET' && url.pathname === '/ekran') {
@@ -496,6 +601,22 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
           json(res, 200, { ok: true, ...r });
           return;
         }
+        if (url.pathname === '/ekran-guc') {
+          const r = await t.sirayla(() => t.ekranAyarla(!!g.kapali));
+          log(`[tv] ${t.id} ekran ${r.ekranKapali ? 'kapatıldı' : 'açıldı'}`);
+          json(res, 200, { ok: true, ...r });
+          return;
+        }
+        if (url.pathname === '/bildirim') {
+          const mesaj = String(g.mesaj || '').trim();
+          const sureSn = Number(g.sureSn ?? 5);
+          if (!mesaj || mesaj.length > 160) throw new HttpHata(400, 'mesaj 1-160 karakter olmalı');
+          if (!Number.isInteger(sureSn) || sureSn < 5 || sureSn > 120) throw new HttpHata(400, 'süre 5-120 sn olmalı');
+          await t.bildirimGoster(mesaj, sureSn);
+          log(`[tv] ${t.id} bildirim (${sureSn} sn)`);
+          json(res, 200, { ok: true });
+          return;
+        }
         if (url.pathname === '/cozumle') {
           json(res, 200, { kanallar: await t.sirayla(() => t.cozumle(adListesi(g, 30))) });
           return;
@@ -522,7 +643,8 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
       }
       json(res, 404, { hata: 'bilinmeyen uç' });
     } catch (e) {
-      const kod = e instanceof HttpHata ? e.kod : 502;
+      const kod = Number.isInteger(e?.kod) ? e.kod : 502;   // HttpHata ve ZamanlayiciHata
+      if (res.headersSent) { res.end(); return; }
       json(res, kod, { hata: String(e.message || e).slice(0, 200) });
     }
   });
@@ -547,7 +669,31 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   }
   const rehber = new Rehber({ dizin: DURUM_DIZINI, log: console.log });
   const tvler = tvleriYukle(rehber, join(DURUM_DIZINI, 'teshis'));
-  const sunucu = sunucuKur(tvler, { rehber });
+  const tvBul = (id) => tvler.find((t) => t.id === id);
+  // "Geri dön" + Program görevleri (kullanıcı, 17.10.2026). Görev kanalın gerçekten ekrana geldiğini
+  // doğrular (dogrula); "geri dön" TV o arada kapatıldıysa açmaz (tvKapaliysa: atla).
+  const zamanlayici = new Zamanlayici({
+    dosya: join(DURUM_DIZINI, 'zamanlayici.json'),
+    log: console.log,
+    calistir: async (g) => {
+      const t = tvBul(g.tv);
+      if (!t) return { sonuc: 'hata', neden: 'bilinmeyen TV' };
+      if (g.tvKapaliysa === 'atla' && !(await t.hazirMi())) return { sonuc: 'atlandi', neden: 'TV kapalıydı' };
+      const hedef = g.kanal.no != null ? { no: g.kanal.no } : { ad: g.kanal.ad };
+      const k = await t.sirayla(() => t.kanalAc({ ...hedef, dogrula: true }));
+      return { sonuc: 'ok', neden: `${k.no} · ${k.ad}${k.acildi ? ' (TV açılarak)' : ''}` };
+    },
+    // 1 dk ve 10 sn önce TV'de bildirim (tara Ö-58). TV kapalıysa gösterilecek ekran yok.
+    uyar: async (g, sn) => {
+      const t = tvBul(g.tv);
+      if (!t || !(await t.hazirMi())) return;
+      const ne = g.kanal.ad || `Kanal ${g.kanal.no}`;
+      await t.toast(`${sn >= 60 ? `${Math.round(sn / 60)} dk` : `${sn} sn`} sonra ${ne} açılacak${g.tur === 'geri-don' ? ' (geri dön)' : ''}`);
+    },
+  });
+  await zamanlayici.yukle();
+  zamanlayici.baslat();
+  const sunucu = sunucuKur(tvler, { rehber, zamanlayici });
   sunucu.listen(PORT, HOST, () => {
     const ozet = tvler.map((t) => `${t.id}${t.anahtar ? '' : ' (anahtarsız!)'}${t.mac ? '' : ' (MAC yok — açılamaz)'}`).join(', ');
     console.log(`[tv-ajan] ${HOST}:${PORT} dinleniyor · TV'ler: ${ozet} · rehber: ${DURUM_DIZINI}`);
@@ -556,7 +702,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const isit = () => rehber.gun(trGunu(Date.now())).catch(() => {});
   isit();
   setInterval(isit, 3 * 60 * 60 * 1000);
-  const kapan = () => { for (const t of tvler) t.birak(); sunucu.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000).unref(); };
+  const kapan = () => { zamanlayici.durdur(); for (const t of tvler) t.birak(); sunucu.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000).unref(); };
   process.on('SIGTERM', kapan);
   process.on('SIGINT', kapan);
 }
