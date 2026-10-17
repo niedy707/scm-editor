@@ -37,7 +37,7 @@
  *   POST /tus      {tv, tus}        → kumanda tuşu
  *   POST /kanal    {tv, ad | no}    → kanala geç — TV kapalıysa ÖNCE AÇAR (kullanıcı, 16.10.2026)
  *   POST /ac       {tv}             → TV'yi aç (Wake-on-LAN, açılana kadar bekler)
- *   POST /giris    {tv, hedef}      → hedef "canli" ya da "apple": canlı yayın ↔ Apple TV'nin HDMI girişi
+ *   POST /giris    {tv, hedef}      → kaynak menüsü: "canli", "apple" (HDMI girişi), "netflix" / "prime" / "disney" (TV uygulaması)
  *   POST /ekran-guc {tv, kapali}    → ekranı kapat / aç (ses devam eder)
  *   POST /bildirim {tv, mesaj, sureSn} → TV ekranına mesaj (sureSn boyunca yenilenerek)
  *   GET  /ekran-akis?tv=&sn=&fps=   → canlı önizleme: art arda JPEG (multipart); TV başına tek çekim, çok izleyici
@@ -79,10 +79,19 @@ export const IZINLI_TUSLAR = new Set([
   'CHANNELUP', 'CHANNELDOWN', 'VOLUMEUP', 'VOLUMEDOWN', 'MUTE',
   'RED', 'GREEN', 'YELLOW', 'BLUE',
   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+  'PLAY', 'PAUSE', 'REWIND', 'FASTFORWARD',   // uygulama kumandası (Netflix vb., 17.10.2026)
 ]);
 
 /** Giriş geçişinin hedefleri — keyfi uygulama başlatılamaz. */
-export const GIRIS_HEDEFLERI = new Set(['canli', 'apple']);
+// Kaynak menüsü (kullanıcı, 17.10.2026): canlı yayın, Apple TV girişi ve üç uygulama. Uygulamalar bugün
+// TV'nin kendi uygulamasıyla açılır (kimlikler salon TV'sinin listLaunchPoints'inden, 17.10.2026).
+export const UYGULAMALAR = {
+  netflix: { ad: 'Netflix', lg: 'netflix' },
+  prime: { ad: 'Amazon Prime', lg: 'amazon' },
+  disney: { ad: 'Disney+', lg: 'com.disney.disneyplus-prod' },
+};
+const LG_KAYNAK = Object.fromEntries(Object.entries(UYGULAMALAR).map(([k, u]) => [u.lg, k]));
+export const GIRIS_HEDEFLERI = new Set(['canli', 'apple', ...Object.keys(UYGULAMALAR)]);
 const CANLI_TV = 'com.webos.app.livetv';
 
 const LISTE_OMRU_MS = 10 * 60 * 1000;
@@ -265,7 +274,7 @@ export class Tv {
           }
         } catch { /* kanal okunamadı */ }
       }
-      const kaynak = on.appId === CANLI_TV ? 'canli' : (on.appId && on.appId === this.appleUygulama ? 'apple' : 'diger');
+      const kaynak = on.appId === CANLI_TV ? 'canli' : (on.appId && on.appId === this.appleUygulama ? 'apple' : (LG_KAYNAK[on.appId] || 'diger'));
       let ekranKapali = null;
       try { ekranKapali = (await this.iste('ssap://com.webos.service.tvpower/power/getPowerState', null, 2000)).state === 'Screen Off'; } catch { /* eski webOS */ }
       return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kaynak, kanal, ekranKapali };
@@ -379,7 +388,7 @@ export class Tv {
     return ad;
   }
 
-  /** Canlı yayın ↔ Apple TV (kumanda tasarımı, 17.10.2026). TV kapalıysa önce açılır. */
+  /** Kaynak menüsü: canlı yayın, Apple TV ya da bir uygulama (kumanda tasarımı, 17.10.2026). TV kapalıysa önce açılır. */
   async girisDegistir(hedef) {
     if (!GIRIS_HEDEFLERI.has(hedef)) throw new HttpHata(400, `geçersiz giriş: ${hedef}`);
     await this.uyan();
@@ -388,6 +397,11 @@ export class Tv {
       await this.adlar();
       uygulama = this.appleUygulama;
       if (!uygulama) throw new HttpHata(404, `${this.ad}: Apple TV girişi bulunamadı (TV'nin giriş adlarında "Apple" yok)`);
+    } else if (UYGULAMALAR[hedef]) {
+      const u = UYGULAMALAR[hedef];
+      const adlar = await this.adlar();
+      if (adlar.size && !adlar.has(u.lg)) throw new HttpHata(404, `${this.ad}: ${u.ad} bu TV'de yüklü değil`);
+      uygulama = u.lg;
     }
     await this.iste('ssap://system.launcher/launch', { id: uygulama });
     return { kaynak: hedef, uygulama };
