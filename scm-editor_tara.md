@@ -1,6 +1,6 @@
 # 🔭 scm-editor — Geliştirme Tarama Raporu (odak: kumanda)
 
-**Tarih**: 17.10.2026 · **Proje Tipi**: Node ajanı (pi63) + web kumandası (`aqara` paneli içinde, `kumanda.ibrahimyagci.com`) · **Sınıf**: Orta, odak modu
+**Tarih**: 17.10.2026 · **Proje Tipi**: Node ajanı (pi63) + web kumandası (`aqara` paneli içinde, kendi alt alan adında) · **Sınıf**: Orta, odak modu
 
 > Bu koşunun odağı kullanıcının sorusu: **"kumandaya ekleyebileceğimiz özellikler"** — özellikle
 > zamanlamalı kanal değişimi ("reklam oldu, 8 dk sonra şu kanalı aç") ve tarih/saatli, tekrarlı
@@ -17,7 +17,7 @@
 
 Listenin dışında bu arada yapılanlar (kullanıcı istekleri, 15-17.10): ev panelinde TV kumandası,
 yayın rehberi (digiturk, yedek tvplus), Wake-on-LAN ile kapalı TV'yi açma, uyanan TV'de kanalın ekrana
-gelmesinin doğrulanması, Apple TV ↔ Canlı TV geçişi, `kumanda.ibrahimyagci.com` (ayrı şifre, kaba kuvvet
+gelmesinin doğrulanması, Apple TV ↔ Canlı TV geçişi, kumandanın kendi adresi (ayrı şifre, kaba kuvvet
 kilidi). 15.10'daki "hızlı erişim" taramasının raporu yazılmamıştı; o konu artık uygulanmış durumda ve bu
 rapor onun yerine geçer.
 

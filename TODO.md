@@ -74,10 +74,10 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
       olursa diye yedek plan olarak kalsın". **Ölçüm (17.10.2026, evden, `/tvler` durum sorgusu):** ajan + TV
       ~38 ms · telefon→VPS ~80 ms (ısınmış) · VPS→pi63→TV ~175-240 ms → bulut tuşu ~190-260 ms, yerel ~45 ms.
       Kanal değişiminde fark hissedilmez (TV'nin görüntüyü değiştirmesi ~1 sn); yalnız art arda tuşta ~0,15 sn.
-      Kurulursa tasarım: aynı adres (`kumanda.ibrahimyagci.com`) açılışta pi63'ü 0,3 sn yoklar, ulaşırsa
+      Kurulursa tasarım: kumandanın bugünkü adresi açılışta pi63'ü 0,3 sn yoklar, ulaşırsa
       komutlar doğrudan gider ("🏠 Yerel" / "☁️ Bulut" işareti); giriş bulutta kalır, panel kısa ömürlü
       imzalı "ev bileti" verir, pi63'te ev LAN'ına açık ikinci dinleyici yalnız bileti + izin listesini kabul
-      eder. HTTPS şart (karışık içerik): ya `ev-kumanda.ibrahimyagci.com` → 10.63.0.8 + DNS doğrulamalı
+      eder. HTTPS şart (karışık içerik): ya ev için ayrı bir alt alan adı → pi63'ün ev içi adresi + DNS doğrulamalı
       sertifika (Mac 60 günde yeniler; ev modemi özel IP'ye çözülen adı engellemiyor — ölçüldü) ya da telefona
       Tailscale + `tailscale cert`. İnternet tamamen giderse sayfa da yüklenmez → yedek planın gerçek değeri
       ancak sayfa önbellekte (service worker) tutulursa ortaya çıkar. O zamana kadar yedek: gerçek kumanda.
