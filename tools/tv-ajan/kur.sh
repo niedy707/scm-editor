@@ -32,7 +32,8 @@ echo "── 3/6  Dosyalar → $HEDEF"
 DOSYALAR=(
   tools/tv-ajan.mjs tools/ws-client.mjs tools/ssap-handshake.json
   tools/net/lg-ssap.mjs tools/net/lg-input.mjs tools/net/lg-screen.mjs tools/net/kanal-bul.mjs
-  tools/net/rehber.mjs tools/net/wol.mjs tools/net/zamanlayici.mjs
+  tools/net/rehber.mjs tools/net/wol.mjs tools/net/zamanlayici.mjs tools/net/atv-kopru.mjs
+  tools/atv-yardimci.py
   web/lib/order.js
 )
 for f in "${DOSYALAR[@]}"; do
@@ -44,6 +45,13 @@ for f in "${DOSYALAR[@]}"; do
   [[ "$A" == "$B" ]] || { echo "!!  Bütünlük bozuk: $f"; exit 1; }
 done
 echo "     ${#DOSYALAR[@]} dosya, sha256 doğrulandı ✓"
+
+# Apple TV (isteğe bağlı): pyatv ayrı bir sanal ortamda. Yoksa uygulamalar TV'nin kendi uygulamasıyla açılır.
+#   sudo python3 -m venv /opt/pyatv && sudo /opt/pyatv/bin/pip install pyatv==0.18.0   (python3-dev gerekir)
+#   Eşleştirme (PIN Apple TV ekranında):  sudo /opt/pyatv/bin/atvremote --storage-filename /var/lib/tv-ajan/pyatv.conf \
+#     -s <apple-tv-ip> --id <kimlik> --protocol companion pair   → sonra: chown tvajan:tvajan + chmod 600
+if [[ -x /opt/pyatv/bin/python3 ]]; then echo "     pyatv: $(/opt/pyatv/bin/python3 -c 'import pyatv.const as c; print(c.__version__)' 2>/dev/null || echo '?') ✓"
+else echo "     pyatv yok — Apple TV'de uygulama açma kapalı (TV'nin uygulaması kullanılır)"; fi
 
 echo "── 4/6  TV listesi ve eşleşme anahtarları"
 for f in tv-ajan.tvler.json .lgtv-clients.json; do

@@ -36,6 +36,8 @@
  *   GET  /ekran?tv=<id>             → JPEG
  *   POST /tus      {tv, tus}        → kumanda tuşu
  *   POST /isaretci {tv, dx, dy} | {tv, tikla: true} → Magic Remote imleci (kumandadaki dokunmatik yüzey)
+ *   POST /tus      {tv, tus, cihaz: "apple"}  → tuş Apple TV'ye (pyatv, Companion)
+ *   POST /metin    {tv, metin}      → Apple TV'de odaktaki yazı alanına metin
  *   POST /kanal    {tv, ad | no}    → kanala geç — TV kapalıysa ÖNCE AÇAR (kullanıcı, 16.10.2026)
  *   POST /ac       {tv}             → TV'yi aç (Wake-on-LAN, açılana kadar bekler)
  *   POST /giris    {tv, hedef}      → kaynak menüsü: "canli", "apple" (HDMI girişi), "netflix" / "prime" / "disney" (TV uygulaması)
@@ -64,6 +66,7 @@ import { kanalBul } from './net/kanal-bul.mjs';
 import { Rehber, trGunu } from './net/rehber.mjs';
 import { wolGonder } from './net/wol.mjs';
 import { Zamanlayici } from './net/zamanlayici.mjs';
+import { AppleTvKopru } from './net/atv-kopru.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -71,6 +74,9 @@ const TOKEN = process.env.TV_AJAN_TOKEN || '';
 const HOST = process.env.TV_AJAN_HOST || '127.0.0.1';
 const PORT = Number(process.env.TV_AJAN_PORT || 3027);
 const TVLER_YOLU = process.env.TV_AJAN_TVLER || resolve(ROOT, 'tv-ajan.tvler.json');
+// Apple TV (pyatv): kurulu Python ve yardımcı betik. Kimlik dosyası DURUM_DIZINI/pyatv.conf (eşleştirme yazar).
+const PYATV_PYTHON = process.env.TV_AJAN_PYATV || '/opt/pyatv/bin/python3';
+const ATV_YARDIMCI = resolve(ROOT, 'tools/atv-yardimci.py');
 const ANAHTAR_YOLU = process.env.TV_AJAN_ANAHTARLAR || resolve(ROOT, '.lgtv-clients.json');
 const DURUM_DIZINI = process.env.TV_AJAN_DURUM || process.env.STATE_DIRECTORY || resolve(ROOT, 'data/yerel/rehber');
 
@@ -86,10 +92,17 @@ export const IZINLI_TUSLAR = new Set([
 /** Giriş geçişinin hedefleri — keyfi uygulama başlatılamaz. */
 // Kaynak menüsü (kullanıcı, 17.10.2026): canlı yayın, Apple TV girişi ve üç uygulama. Uygulamalar bugün
 // TV'nin kendi uygulamasıyla açılır (kimlikler salon TV'sinin listLaunchPoints'inden, 17.10.2026).
+// Apple TV eşleştirilmişse (pyatv) uygulama Apple TV'de açılır (kullanıcı: "Apple TV işlemcisi daha iyi");
+// kimlikler salon Apple TV'sinin app_list'inden (17.10.2026). Apple TV'ye ulaşılamazsa TV'nin uygulaması.
 export const UYGULAMALAR = {
-  netflix: { ad: 'Netflix', lg: 'netflix' },
-  prime: { ad: 'Amazon Prime', lg: 'amazon' },
-  disney: { ad: 'Disney+', lg: 'com.disney.disneyplus-prod' },
+  netflix: { ad: 'Netflix', lg: 'netflix', atv: 'com.netflix.Netflix' },
+  prime: { ad: 'Amazon Prime', lg: 'amazon', atv: 'com.amazon.aiv.AIVApp' },
+  disney: { ad: 'Disney+', lg: 'com.disney.disneyplus-prod', atv: 'com.disney.disneyplus' },
+};
+// Uygulama kumandası Apple TV girişindeyken tuşları Apple TV'ye gönderir (LG adı → pyatv tuşu).
+export const ATV_TUSLARI = {
+  UP: 'up', DOWN: 'down', LEFT: 'left', RIGHT: 'right', ENTER: 'select', BACK: 'menu', HOME: 'home',
+  PLAY: 'play', PAUSE: 'pause', REWIND: 'skip_backward', FASTFORWARD: 'skip_forward',
 };
 const LG_KAYNAK = Object.fromEntries(Object.entries(UYGULAMALAR).map(([k, u]) => [u.lg, k]));
 export const GIRIS_HEDEFLERI = new Set(['canli', 'apple', ...Object.keys(UYGULAMALAR)]);
@@ -151,11 +164,14 @@ export async function uyandir({ hazirMi, wol, sureMs = UYANMA_MS, araMs = 1500, 
 }
 
 export class Tv {
-  constructor({ id, ad, ip, mac }, anahtar, { rehber = null, wol = wolGonder, uyanma = {}, teshisDizini = null, log = () => {} } = {}) {
+  constructor({ id, ad, ip, mac, appletv }, anahtar, { rehber = null, wol = wolGonder, uyanma = {}, teshisDizini = null, log = () => {}, atv = null } = {}) {
     this.id = id;
     this.ad = ad;
     this.ip = ip;
     this.mac = mac || null;
+    this.appletv = appletv || null;  // { ip, id } — bu TV'ye bağlı Apple TV (pyatv)
+    this.atv = atv;                  // AppleTvKopru (tüm TV'ler için tek)
+    this.appleSon = null;            // Apple TV'de en son açtırılan uygulama (netflix…), girişten çıkınca silinir
     this.anahtar = anahtar;
     this.rehber = rehber;
     this.wol = wol;
@@ -275,10 +291,13 @@ export class Tv {
           }
         } catch { /* kanal okunamadı */ }
       }
-      const kaynak = on.appId === CANLI_TV ? 'canli' : (on.appId && on.appId === this.appleUygulama ? 'apple' : (LG_KAYNAK[on.appId] || 'diger'));
+      const appleda = !!on.appId && on.appId === this.appleUygulama;
+      if (!appleda) this.appleSon = null;
+      const kaynak = on.appId === CANLI_TV ? 'canli' : (appleda ? (this.appleSon || 'apple') : (LG_KAYNAK[on.appId] || 'diger'));
+      const cihaz = appleda ? 'apple' : 'lg';
       let ekranKapali = null;
       try { ekranKapali = (await this.iste('ssap://com.webos.service.tvpower/power/getPowerState', null, 2000)).state === 'Screen Off'; } catch { /* eski webOS */ }
-      return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kaynak, kanal, ekranKapali };
+      return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kaynak, cihaz, appleTv: this.appleTvVar(), kanal, ekranKapali };
     } catch (e) {
       if (!this._baglaniyor) this.birak();
       return { id: this.id, ad: this.ad, acik: false, acilabilir: !!this.mac, sebep: String(e.message || e).split('\n')[0].slice(0, 120) };
@@ -394,6 +413,21 @@ export class Tv {
     if (!GIRIS_HEDEFLERI.has(hedef)) throw new HttpHata(400, `geçersiz giriş: ${hedef}`);
     await this.uyan();
     let uygulama = CANLI_TV;
+    let not = null;
+    this.appleSon = null;
+    if (UYGULAMALAR[hedef]?.atv && this.appleTvVar()) {
+      const u = UYGULAMALAR[hedef];
+      try {
+        await this.atv.iste(this.appletv, 'uygulama', { uygulama: u.atv });   // Apple TV uykudaysa uyanır
+        await this.adlar();
+        if (this.appleUygulama) await this.iste('ssap://system.launcher/launch', { id: this.appleUygulama });
+        this.appleSon = hedef;
+        return { kaynak: hedef, cihaz: 'apple', uygulama: u.atv };
+      } catch (e) {
+        this.log(`[tv] ${this.id}: Apple TV'de ${u.ad} açılamadı (${e.message}) — TV'nin uygulamasıyla açılıyor`);
+        not = `Apple TV'ye ulaşılamadı — TV'nin ${u.ad} uygulaması açıldı`;
+      }
+    }
     if (hedef === 'apple') {
       await this.adlar();
       uygulama = this.appleUygulama;
@@ -405,7 +439,25 @@ export class Tv {
       uygulama = u.lg;
     }
     await this.iste('ssap://system.launcher/launch', { id: uygulama });
-    return { kaynak: hedef, uygulama };
+    return { kaynak: hedef, uygulama, ...(UYGULAMALAR[hedef] ? { cihaz: 'lg' } : {}), ...(not ? { not } : {}) };
+  }
+
+  appleTvVar() {
+    return !!(this.appletv && this.atv && this.atv.hazirMi());
+  }
+
+  /** Uygulama kumandası Apple TV girişindeyken: tuş Apple TV'ye (Companion). */
+  async appleTus(ad) {
+    const tus = ATV_TUSLARI[ad];
+    if (!tus) throw new HttpHata(400, `Apple TV'de karşılığı olmayan tuş: ${ad}`);
+    if (!this.appleTvVar()) throw new HttpHata(409, `${this.ad}: Apple TV bağlı değil`);
+    await this.atv.iste(this.appletv, 'tus', { tus });
+  }
+
+  /** Apple TV'de odaktaki yazı alanına metin (arama kutusu). */
+  async appleMetin(metin) {
+    if (!this.appleTvVar()) throw new HttpHata(409, `${this.ad}: Apple TV bağlı değil`);
+    await this.atv.iste(this.appletv, 'metin', { metin });
   }
 
   async cozumle(adlar) {
@@ -630,8 +682,20 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         const t = tvAl(g.tv);
         if (url.pathname === '/tus') {
           const tus = String(g.tus || '').toUpperCase();
+          if (g.cihaz === 'apple') {   // uygulama kumandası, Apple TV girişi
+            await t.appleTus(tus);
+            json(res, 200, { ok: true });
+            return;
+          }
           await t.sirayla(() => t.tus(tus));
           log(`[tv] ${t.id} tuş ${tus}`);
+          json(res, 200, { ok: true });
+          return;
+        }
+        if (url.pathname === '/metin') {
+          const metin = typeof g.metin === 'string' ? g.metin : '';
+          if (metin.length > 100) throw new HttpHata(400, 'metin en çok 100 karakter');
+          await t.appleMetin(metin);
           json(res, 200, { ok: true });
           return;
         }
@@ -715,14 +779,17 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
   });
 }
 
-function tvleriYukle(rehber, teshisDizini) {
+function tvleriYukle(rehber, teshisDizini, atv = null) {
   if (!existsSync(TVLER_YOLU)) throw new Error(`TV listesi yok: ${TVLER_YOLU}`);
   const liste = JSON.parse(readFileSync(TVLER_YOLU, 'utf8'));
   const anahtarlar = existsSync(ANAHTAR_YOLU) ? JSON.parse(readFileSync(ANAHTAR_YOLU, 'utf8')) : {};
   return liste.map((t) => {
     if (!/^[a-z0-9-]{1,20}$/.test(t.id || '') || !t.ip) throw new Error(`geçersiz TV kaydı: ${JSON.stringify(t)}`);
     if (t.mac && !MAC_KALIBI.test(t.mac)) throw new Error(`geçersiz MAC (${t.id}): ${t.mac}`);
-    return new Tv(t, anahtarlar[t.ip] || null, { rehber, teshisDizini, log: console.log });
+    if (t.appletv && (!/^[\d.]{7,15}$/.test(t.appletv.ip || '') || !/^[A-Za-z0-9:-]{6,40}$/.test(t.appletv.id || ''))) {
+      throw new Error(`geçersiz Apple TV kaydı (${t.id})`);
+    }
+    return new Tv(t, anahtarlar[t.ip] || null, { rehber, teshisDizini, log: console.log, atv });
   });
 }
 
@@ -733,7 +800,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exit(1);
   }
   const rehber = new Rehber({ dizin: DURUM_DIZINI, log: console.log });
-  const tvler = tvleriYukle(rehber, join(DURUM_DIZINI, 'teshis'));
+  const atv = new AppleTvKopru({ python: PYATV_PYTHON, betik: ATV_YARDIMCI, depo: join(DURUM_DIZINI, 'pyatv.conf'), log: console.log });
+  const tvler = tvleriYukle(rehber, join(DURUM_DIZINI, 'teshis'), atv);
   const tvBul = (id) => tvler.find((t) => t.id === id);
   // "Geri dön" + Program görevleri (kullanıcı, 17.10.2026). Görev kanalın gerçekten ekrana geldiğini
   // doğrular (dogrula); "geri dön" TV o arada kapatıldıysa açmaz (tvKapaliysa: atla).

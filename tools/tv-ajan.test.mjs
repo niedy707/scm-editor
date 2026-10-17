@@ -17,6 +17,9 @@ import { digiturkAyristir, tvplusAyristir, simdiSonraki, trGunu, Rehber } from '
 import { sihirliPaket, yayinAdresi } from './net/wol.mjs';
 import { uyandir, Tv, sunucuKur } from './tv-ajan.mjs';
 import { Zamanlayici } from './net/zamanlayici.mjs';
+import { AppleTvKopru } from './net/atv-kopru.mjs';
+import { PassThrough } from 'node:stream';
+import { EventEmitter } from 'node:events';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ORNEK = readFileSync(join(ROOT, 'fixtures/rehber/digiturk-ornek.html'), 'utf8');
@@ -266,7 +269,7 @@ test('uyandir: açılmazsa zaman aşımı, paket sayısıyla', async () => {
  * `geriAl`: uyanmadan sonraki ilk N kanal komutunu TV "kabul edip" uygulamaz (16.10.2026'da
  * görülen: açılışını bitirirken son kanala döndü). `hepGeriAl`: hiç uygulamaz.
  */
-function sahteTv({ acik = false, acilirMi = true, mac = 'aa:bb:cc:dd:ee:ff', liste, geriAl = 0, hepGeriAl = false, onPlan = 'com.webos.app.livetv', teshisDizini = null, girisler = [{ id: 'HDMI_2', label: 'Apple OTT', appId: 'com.webos.app.hdmi2' }], uygulamalar = [{ id: 'netflix', title: 'Netflix' }, { id: 'amazon', title: 'Prime Video' }] } = {}) {
+function sahteTv({ acik = false, acilirMi = true, mac = 'aa:bb:cc:dd:ee:ff', liste, geriAl = 0, hepGeriAl = false, onPlan = 'com.webos.app.livetv', teshisDizini = null, girisler = [{ id: 'HDMI_2', label: 'Apple OTT', appId: 'com.webos.app.hdmi2' }], uygulamalar = [{ id: 'netflix', title: 'Netflix' }, { id: 'amazon', title: 'Prime Video' }], appletv = null, atv = null } = {}) {
   const s = sahteSaat();
   const olaylar = [];
   const kanallar = liste || [
@@ -274,7 +277,8 @@ function sahteTv({ acik = false, acilirMi = true, mac = 'aa:bb:cc:dd:ee:ff', lis
     { no: 12, ad: 'CNN TÜRK HD', channelId: 'c12' },
   ];
   const durum = { kanal: { channelNumber: '7', channelName: 'TRT 1 HD', channelId: 't7' }, onPlan };
-  const tv = new Tv({ id: 'oda', ad: 'Oda', ip: '192.0.2.10', mac }, 'anahtar', {
+  const tv = new Tv({ id: 'oda', ad: 'Oda', ip: '192.0.2.10', mac, appletv }, 'anahtar', {
+    atv,
     wol: async (m, ip) => { olaylar.push(`wol ${m} ${ip}`); if (acilirMi) acik = true; },
     uyanma: { simdi: s.simdi, bekle: s.bekle },
     teshisDizini,
@@ -386,10 +390,10 @@ test('giriş: Apple TV, TV\'nin giriş adından bulunur; canlı yayına dönül�
 
 test('kaynak menüsü: uygulama TV\'nin kendi uygulamasıyla açılır, durum onu söyler; yüklü değilse 404', async () => {
   const { tv, durum } = sahteTv({ acik: true });
-  assert.deepEqual(await tv.girisDegistir('netflix'), { kaynak: 'netflix', uygulama: 'netflix' });
+  assert.deepEqual(await tv.girisDegistir('netflix'), { kaynak: 'netflix', uygulama: 'netflix', cihaz: 'lg' });
   assert.equal(durum.onPlan, 'netflix');
   assert.equal((await tv.durum()).kaynak, 'netflix');
-  assert.deepEqual(await tv.girisDegistir('prime'), { kaynak: 'prime', uygulama: 'amazon' });
+  assert.deepEqual(await tv.girisDegistir('prime'), { kaynak: 'prime', uygulama: 'amazon', cihaz: 'lg' });
   assert.equal((await tv.durum()).kaynak, 'prime');
   await assert.rejects(tv.girisDegistir('disney'), (e) => e.kod === 404 && /Disney\+ bu TV'de yüklü değil/.test(e.message));
 });
@@ -648,4 +652,80 @@ test('HTTP: /isaretci imleci oynatır ya da tıklar; geçersiz hareket 400', asy
     }
   });
   assert.deepEqual(gonderilen, ['move 12 -7', 'click']);
+});
+
+// ───────────────────────────────────────────── Apple TV (pyatv köprüsü)
+
+const ATV = { ip: '192.0.2.20', id: 'AABBCCDDEEFF' };
+function sahteKopru({ hata = null } = {}) {
+  const cagrilar = [];
+  return { cagrilar, hazirMi: () => true, iste: async (cihaz, is, ek) => { cagrilar.push({ cihaz, is, ...ek }); if (hata) throw hata; return { ok: true }; } };
+}
+
+test('Apple TV: uygulama Apple TV\'de açılır, TV o girişe geçer; durum uygulamayı ve cihazı söyler', async () => {
+  const k = sahteKopru();
+  const { tv, durum } = sahteTv({ acik: true, appletv: ATV, atv: k });
+  assert.deepEqual(await tv.girisDegistir('netflix'), { kaynak: 'netflix', cihaz: 'apple', uygulama: 'com.netflix.Netflix' });
+  assert.deepEqual(k.cagrilar, [{ cihaz: ATV, is: 'uygulama', uygulama: 'com.netflix.Netflix' }]);
+  assert.equal(durum.onPlan, 'com.webos.app.hdmi2');
+  const d = await tv.durum();
+  assert.equal(d.kaynak, 'netflix');
+  assert.equal(d.cihaz, 'apple');
+  assert.equal(d.appleTv, true);
+  await tv.girisDegistir('canli');
+  assert.equal((await tv.durum()).kaynak, 'canli');
+  durum.onPlan = 'com.webos.app.hdmi2';   // elle Apple TV'ye dönülürse artık "netflix" sanılmaz
+  assert.equal((await tv.durum()).kaynak, 'apple');
+});
+
+test('Apple TV: ulaşılamazsa TV\'nin kendi uygulaması açılır ve not düşülür; eşleşme yoksa doğrudan TV uygulaması', async () => {
+  const k = sahteKopru({ hata: new Error('Apple TV bulunamadı') });
+  const { tv, durum } = sahteTv({ acik: true, appletv: ATV, atv: k });
+  const r = await tv.girisDegistir('netflix');
+  assert.equal(r.cihaz, 'lg');
+  assert.match(r.not, /Apple TV'ye ulaşılamadı/);
+  assert.equal(durum.onPlan, 'netflix');
+  const yok = sahteTv({ acik: true }).tv;   // Apple TV kaydı yok
+  assert.deepEqual(await yok.girisDegistir('prime'), { kaynak: 'prime', uygulama: 'amazon', cihaz: 'lg' });
+});
+
+test('HTTP: /tus cihaz=apple tuşu Apple TV\'ye çevirerek gönderir; karşılıksız tuş 400, Apple TV yoksa 409; /metin', async () => {
+  const k = sahteKopru();
+  const { tv } = sahteTv({ acik: true, appletv: ATV, atv: k });
+  const yok = sahteTv({ acik: true }).tv;
+  yok.id = 'salon';
+  await sunucuyla([tv, yok], {}, async (iste) => {
+    assert.equal((await iste('/tus', { tv: 'oda', tus: 'ENTER', cihaz: 'apple' })).status, 200);
+    assert.equal((await iste('/tus', { tv: 'oda', tus: 'back', cihaz: 'apple' })).status, 200);
+    assert.equal((await iste('/tus', { tv: 'oda', tus: 'RED', cihaz: 'apple' })).status, 400);
+    assert.equal((await iste('/tus', { tv: 'salon', tus: 'UP', cihaz: 'apple' })).status, 409);
+    assert.equal((await iste('/metin', { tv: 'oda', metin: 'addams' })).status, 200);
+    assert.equal((await iste('/metin', { tv: 'oda', metin: 'x'.repeat(101) })).status, 400);
+  });
+  assert.deepEqual(k.cagrilar.map((c) => `${c.is}:${c.tus || c.metin}`), ['tus:select', 'tus:menu', 'metin:addams']);
+});
+
+test('köprü: yardımcıya satır başına JSON yazar, yanıtı numarasıyla eşler; hata ve süreç düşmesi okunur hata olur', async () => {
+  const surecler = [];
+  const spawnFn = () => {
+    const p = new EventEmitter();
+    p.stdin = new PassThrough(); p.stdout = new PassThrough(); p.stderr = new PassThrough();
+    p.stdin.on('data', (d) => {
+      for (const satir of String(d).split('\n').filter(Boolean)) {
+        const j = JSON.parse(satir);
+        if (j.is === 'oldur') { p.emit('exit', 1); continue; }
+        p.stdout.write(JSON.stringify(j.is === 'tus' ? { no: j.no, ok: true } : { no: j.no, ok: false, hata: 'eşleştirilmemiş' }) + '\n');
+      }
+    });
+    surecler.push(p);
+    return p;
+  };
+  const k = new AppleTvKopru({ python: '/x/python3', betik: '/x/b.py', depo: '/x/d.conf', spawnFn, varMi: () => true });
+  assert.deepEqual(await k.iste(ATV, 'tus', { tus: 'up' }), { no: 1, ok: true });
+  await assert.rejects(k.iste(ATV, 'uygulama', { uygulama: 'a' }), (e) => e.kod === 502 && /eşleştirilmemiş/.test(e.message));
+  await assert.rejects(k.iste(ATV, 'oldur'), (e) => /yardımcısı kapandı/.test(e.message));
+  await k.iste(ATV, 'tus', { tus: 'down' });
+  assert.equal(surecler.length, 2, 'düşen süreç sonraki istekte yeniden başlar');
+  const yok = new AppleTvKopru({ python: '/x', betik: '/x', depo: '/x', spawnFn, varMi: () => false });
+  await assert.rejects(yok.iste(ATV, 'tus', { tus: 'up' }), (e) => e.kod === 409);
 });
