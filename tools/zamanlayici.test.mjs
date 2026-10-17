@@ -171,3 +171,13 @@ test('ön uyarı: 1 dk ve 10 sn kala; uzatılınca eski uyarılar iptal, yeniler
   await z.sil(g.id);
   z.durdur();
 });
+
+test('program: etiket (program adı) saklanır ve geçmişe taşınır', async () => {
+  const { z, ilerle } = kur();
+  const g = await z.ekle({ tv: 'salon', kanal: 'TV8', zaman: { tur: 'tek', tarih: '2026-10-17', saat: '20:30' }, etiket: 'MasterChef Türkiye' });
+  assert.equal(g.etiket, 'MasterChef Türkiye');
+  await assert.rejects(z.ekle({ tv: 'salon', kanal: 'TV8', zaman: { tur: 'tek', tarih: '2026-10-17', saat: '21:30' }, etiket: 'x'.repeat(81) }), (e) => e.kod === 400);
+  await ilerle(30 * 60000);
+  assert.equal(z.liste().gecmis[0].etiket, 'MasterChef Türkiye');
+  z.durdur();
+});

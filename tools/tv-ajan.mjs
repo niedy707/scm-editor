@@ -41,6 +41,7 @@
  *   POST /ekran-guc {tv, kapali}    → ekranı kapat / aç (ses devam eder)
  *   POST /bildirim {tv, mesaj, sureSn} → TV ekranına mesaj (sureSn boyunca yenilenerek)
  *   GET  /ekran-akis?tv=&sn=        → canlı önizleme: art arda JPEG (multipart), TV başına tek akış
+ *   POST /akis     {adlar[], saat}  → kanalların yayın akışı (şu andan `saat` saat ileri; rehberden)
  *   GET  /zamanlayici               → geri dön sayaçları + program görevleri + geçmiş
  *   POST /zamanlayici {islem, …}    → geri-don | ekle | uzat | sil | etkin | hemen (bkz. net/zamanlayici.mjs)
  *   POST /cozumle  {tv, adlar[]}    → adları o TV'deki kanal numaralarına çevir
@@ -535,6 +536,18 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         log(`[tv] ${t.id} canlı önizleme: ${kare} kare / ${sn.toFixed(0)} sn (${(kare / sn).toFixed(1)} kare/sn), ${(bayt / 1e6).toFixed(1)} MB`);
         return;
       }
+      if (req.method === 'POST' && url.pathname === '/akis') {
+        if (!rehber) throw new HttpHata(503, 'rehber yok');
+        const g = await govdeOku(req);
+        const saat = Math.min(Math.max(Number(g.saat) || 30, 1), 48);
+        const kanallar = await Promise.all(adListesi(g, 20).map(async (ad) => {
+          let programlar = [];
+          try { programlar = await zamanAsimi(rehber.akis(ad, { saat }), 25000, 'rehber'); } catch { /* yok */ }
+          return { ad, programlar };
+        }));
+        json(res, 200, { simdi: Date.now(), kanallar });
+        return;
+      }
       if (req.method === 'GET' && url.pathname === '/zamanlayici') {
         if (!zamanlayici) throw new HttpHata(503, 'zamanlayıcı kurulu değil');
         json(res, 200, zamanlayici.liste());
@@ -551,7 +564,7 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
           sonuc = await zamanlayici.geriDon({ tv: t.id, dk: g.dk, kanal });
         } else if (islem === 'ekle') {
           const t = tvAl(g.tv);
-          sonuc = await zamanlayici.ekle({ tv: t.id, kanal: g.kanal, zaman: g.zaman, tvKapaliysa: g.tvKapaliysa });
+          sonuc = await zamanlayici.ekle({ tv: t.id, kanal: g.kanal, zaman: g.zaman, tvKapaliysa: g.tvKapaliysa, etiket: g.etiket ?? null });
         } else if (islem === 'uzat') sonuc = await zamanlayici.uzat(g.id, g.dk ?? 1);
         else if (islem === 'sil') sonuc = await zamanlayici.sil(g.id);
         else if (islem === 'etkin') sonuc = await zamanlayici.etkin(g.id, g.acik);

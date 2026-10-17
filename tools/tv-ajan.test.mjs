@@ -547,3 +547,38 @@ test('HTTP: canlı önizleme art arda JPEG akıtır, istemci kopunca durur', asy
   assert.ok(kare - once <= 1, 'istemci kopunca kare çekimi durmalı');
   await new Promise((r2) => s.close(r2));
 });
+
+test('Rehber.akis: tvplus günün tamamını verir; biten programlar düşer; sıralı ve tekil', async () => {
+  const an = tr(2026, 10, 17, 21);
+  const fetchFn = async (url, ops = {}) => {
+    if (String(url).includes('digiturk')) return { ok: true, status: 200, text: async () => sayfa(12) };
+    if (String(url).endsWith('/Authenticate')) return { ok: true, status: 200, headers: { getSetCookie: () => [] }, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => ({ playbilllist: [
+      { name: 'Haber', starttime: '2026-10-17 19:00:00 UTC+03:00', endtime: '2026-10-17 20:00:00 UTC+03:00' },
+      { name: 'Dizi', starttime: '2026-10-17 20:00:00 UTC+03:00', endtime: '2026-10-17 23:15:00 UTC+03:00' },
+      { name: 'Gece', starttime: '2026-10-17 23:15:00 UTC+03:00', endtime: '2026-10-18 01:00:00 UTC+03:00' },
+    ] }) };
+  };
+  const r = new Rehber({ fetchFn, simdi: () => an });
+  const p = await r.akis('Kanal D', { saat: 30 });
+  assert.deepEqual(p.map((x) => x.ad), ['Dizi', 'Gece']);
+  assert.equal(p[0].bas, tr(2026, 10, 17, 20));
+});
+
+test('Rehber.akis: tvplus kimliği yoksa digiturk', async () => {
+  const an = tr(2026, 10, 16, 12);
+  const f = sahteFetch(sayfa(12, ORNEK));
+  const r = new Rehber({ fetchFn: f, simdi: () => an });
+  const p = await r.akis('CNN TURK', { saat: 30 });   // ORNEK'te CNN TURK var; TVPLUS_KIMLIK'te CNNTURK var ama sahte fetch tvplus'a JSON vermez
+  assert.ok(p.length >= 1);
+  assert.ok(p.every((x) => x.bit > an));
+});
+
+test('HTTP: /akis kanalların akışını döndürür', async () => {
+  const { tv } = sahteTv({ acik: false });
+  const rehber = { akis: async (ad) => (ad === 'TV8' ? [{ ad: 'MasterChef', bas: 1, bit: 2 }] : []) };
+  await sunucuyla([tv], { rehber }, async (iste) => {
+    const j = await (await iste('/akis', { adlar: ['TV8', 'ATV'], saat: 30 })).json();
+    assert.deepEqual(j.kanallar, [{ ad: 'TV8', programlar: [{ ad: 'MasterChef', bas: 1, bit: 2 }] }, { ad: 'ATV', programlar: [] }]);
+  });
+});

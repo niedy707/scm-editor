@@ -145,8 +145,9 @@ export class Zamanlayici {
   }
 
   /** Program görevi: bir kez (tarih + saat) ya da haftalık (günler + saat). */
-  async ekle({ tv, kanal, zaman, tvKapaliysa = 'ac' }) {
+  async ekle({ tv, kanal, zaman, tvKapaliysa = 'ac', etiket = null }) {
     if (!kanal || typeof kanal !== 'string' || kanal.length > 60) throw new ZamanlayiciHata(400, 'kanal adı gerekli');
+    if (etiket != null && (typeof etiket !== 'string' || etiket.length > 80)) throw new ZamanlayiciHata(400, 'etiket en çok 80 karakter');
     if (!['ac', 'atla'].includes(tvKapaliysa)) throw new ZamanlayiciHata(400, 'TV kapalıysa: ac ya da atla');
     if ([...this.gorevler.values()].filter((g) => g.tur !== 'geri-don').length >= EN_FAZLA_GOREV) {
       throw new ZamanlayiciHata(409, `en fazla ${EN_FAZLA_GOREV} program görevi`);
@@ -156,12 +157,12 @@ export class Zamanlayici {
     if (zaman?.tur === 'tek') {
       const an = trAn(zaman.tarih, zaman.saat);
       if (an <= simdi) throw new ZamanlayiciHata(400, 'bu an geçmişte');
-      g = this._yeni({ tur: 'tek', tv, kanal: { ad: kanal }, an, tvKapaliysa });
+      g = this._yeni({ tur: 'tek', tv, kanal: { ad: kanal }, an, tvKapaliysa, ...(etiket ? { etiket } : {}) });
     } else if (zaman?.tur === 'haftalik') {
       const gunler = [...new Set((zaman.gunler || []).map(Number))].filter((x) => Number.isInteger(x) && x >= 1 && x <= 7).sort();
       if (!gunler.length) throw new ZamanlayiciHata(400, 'en az bir gün seçilmeli');
       if (!SAAT.test(String(zaman.saat || ''))) throw new ZamanlayiciHata(400, 'saat SS:DD olmalı');
-      g = this._yeni({ tur: 'haftalik', tv, kanal: { ad: kanal }, saat: zaman.saat, gunler, an: sonrakiHaftalik(zaman.saat, gunler, simdi), tvKapaliysa });
+      g = this._yeni({ tur: 'haftalik', tv, kanal: { ad: kanal }, saat: zaman.saat, gunler, an: sonrakiHaftalik(zaman.saat, gunler, simdi), tvKapaliysa, ...(etiket ? { etiket } : {}) });
     } else {
       throw new ZamanlayiciHata(400, 'zaman türü tek ya da haftalik olmalı');
     }
@@ -312,7 +313,7 @@ export class Zamanlayici {
   }
 
   _gecmiseYaz(g, sonuc) {
-    this.gecmis.push({ id: g.id, tur: g.tur, tv: g.tv, kanal: g.kanal, an: g.an, bitti: this.simdi(), sonuc: sonuc.sonuc, neden: sonuc.neden || null });
+    this.gecmis.push({ id: g.id, tur: g.tur, tv: g.tv, kanal: g.kanal, etiket: g.etiket || null, an: g.an, bitti: this.simdi(), sonuc: sonuc.sonuc, neden: sonuc.neden || null });
     if (this.gecmis.length > GECMIS_EN_FAZLA) this.gecmis.splice(0, this.gecmis.length - GECMIS_EN_FAZLA);
   }
 

@@ -228,6 +228,46 @@ export class Rehber {
   }
 
   /**
+   * Bir kanalın yayın akışı: şu andan `saat` saat ileriye kadar (Program penceresi, kullanıcı 17.10.2026:
+   * "favori kanalların yayın akışı listelensin, başladığında aç denilebilsin").
+   * tvplus önce: günün TAMAMINI veriyor; digiturk'te bazı kanalların akşam kuşağı eksik (17.10.2026
+   * ölçümü). tvplus kimliği yoksa ya da tvplus yanıt vermezse digiturk (dün yalnız önbellekten).
+   * @returns {Promise<Array<{ad:string, bas:number, bit:number}>>}
+   */
+  async akis(ad, { saat = 30 } = {}) {
+    const anahtar = anaAd(ad);
+    if (!anahtar) return [];
+    const an = this.simdi();
+    const son = an + saat * 3600e3;
+    const bugun = trGunu(an);
+    const yarin = trGunu(an + GUN_MS);
+    let programlar = [];
+    if (TVPLUS_KIMLIK[anahtar] && an - this.tvplusHata >= HATA_BEKLEME_MS) {
+      try {
+        for (const g of [trGunu(an - GUN_MS), bugun, yarin]) programlar = programlar.concat(await this._tvplus(anahtar, g));
+      } catch (e) {
+        this.tvplusHata = an;
+        this.log(`[rehber] tvplus akış: ${e.message}`);
+        programlar = [];
+      }
+    }
+    if (!programlar.some((p) => p.bit > an)) {
+      programlar = [];
+      for (const [g, agdan] of [[trGunu(an - GUN_MS), false], [bugun, true], [yarin, true]]) {
+        try {
+          const k = (await this.gun(g, { agdan })).get(anahtar);
+          if (k) programlar = programlar.concat(k.programlar);
+        } catch { /* o gün yok */ }
+      }
+    }
+    const gorulen = new Set();
+    return programlar
+      .filter((p) => p.bit > an && p.bas < son && !gorulen.has(p.bas) && gorulen.add(p.bas))
+      .sort((a, b) => a.bas - b.bas)
+      .map((p) => ({ ad: p.ad, bas: p.bas, bit: p.bit }));
+  }
+
+  /**
    * Kanal adına göre şu an/sonraki. Dün de istenir: gece yarısından sonra hâlâ süren program
    * dünün sayfasındadır.
    * @returns {{ simdi, sonraki, kaynak } | null}
