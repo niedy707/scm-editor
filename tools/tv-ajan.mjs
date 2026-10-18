@@ -50,6 +50,8 @@
  *   POST /cozumle  {tv, adlar[]}    → adları o TV'deki kanal numaralarına çevir
  *   POST /epg      {tv, adlar[]}    → bu kanallarda şu an ve sonra ne var (rehberden)
  *   POST /kapat    {tv}             → TV'yi kapat
+ *   GET  /ses?tv=  · POST /ses {tv, seviye 0-100}  → ses düzeyi (Ch / Vol penceresindeki şerit)
+ *   GET  /izleme?tv=&gun=YYYY-MM-DD&gunSayisi=N    → izleme geçmişi + özet (TV_AJAN_IZLEME=1 ise)
  */
 
 import http from 'node:http';
@@ -67,6 +69,7 @@ import { Rehber, trGunu } from './net/rehber.mjs';
 import { wolGonder } from './net/wol.mjs';
 import { Zamanlayici } from './net/zamanlayici.mjs';
 import { AppleTvKopru } from './net/atv-kopru.mjs';
+import { IzlemeKaydi, ozetle, trGun } from './net/izleme.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -518,6 +521,29 @@ export class Tv {
     return { no: Number(c.channelNumber), ad: c.channelName };
   }
 
+  /**
+   * Ses düzeyi (Ch / Vol penceresindeki şerit). webOS'ta yanıt iki biçimde gelebiliyor: düz
+   * { volume, muted } ya da { volumeStatus: { volume, muteStatus, soundOutput } }. Harici ses çıkışında
+   * (soundbar/ARC) düzey -1 döner — o zaman şerit gösterilmez.
+   */
+  async sesOku() {
+    const r = await this.iste('ssap://audio/getVolume');
+    const v = r.volumeStatus || r;
+    const seviye = Number(v.volume);
+    return {
+      seviye: Number.isFinite(seviye) && seviye >= 0 ? seviye : null,
+      sessiz: !!(v.muteStatus ?? v.muted ?? r.mute),
+      cikis: v.soundOutput || r.scenario || null,
+    };
+  }
+
+  async sesAyarla(seviye) {
+    const n = Number(seviye);
+    if (!Number.isInteger(n) || n < 0 || n > 100) throw new HttpHata(400, 'ses 0-100 arasında tam sayı olmalı');
+    await this.iste('ssap://audio/setVolume', { volume: n });
+    return { seviye: n };
+  }
+
   /** Ekranı kapat / aç, ses devam eder (17.10.2026, salon webOS 26'da ölçüldü: ~40 ms). webOS < 4.5 eski uç. */
   async ekranAyarla(kapali) {
     const u = kapali ? 'turnOffScreen' : 'turnOnScreen';
@@ -588,7 +614,7 @@ async function govdeOku(req, sinir = 4096) {
 
 const adListesi = (g, en) => (Array.isArray(g.adlar) ? g.adlar.slice(0, en).map((a) => String(a).slice(0, 60)) : []);
 
-export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null } = {}) {
+export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null } = {}) {
   const byId = new Map(tvler.map((t) => [t.id, t]));
   const tvAl = (id) => {
     const t = byId.get(String(id || ''));
@@ -664,6 +690,25 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
           return { ad, programlar };
         }));
         json(res, 200, { simdi: Date.now(), kanallar });
+        return;
+      }
+      if (req.method === 'GET' && url.pathname === '/ses') {
+        const t = tvAl(url.searchParams.get('tv'));
+        json(res, 200, await t.sirayla(() => t.sesOku()));
+        return;
+      }
+      // İzleme geçmişi (kişisel veri: yalnız belirteçle). gun = İstanbul günü (YYYY-MM-DD), gunSayisi 1-31.
+      if (req.method === 'GET' && url.pathname === '/izleme') {
+        if (!izleme) throw new HttpHata(503, 'izleme kaydı kapalı (TV_AJAN_IZLEME=1)');
+        const gun = url.searchParams.get('gun') || trGun(Date.now());
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(gun)) throw new HttpHata(400, 'gün YYYY-AA-GG olmalı');
+        const gunSayisi = Math.min(Math.max(Number(url.searchParams.get('gunSayisi')) || 1, 1), 31);
+        const tv = url.searchParams.get('tv') || null;
+        if (tv) tvAl(tv);
+        const bit = Date.UTC(...gun.split('-').map((x, i) => Number(x) - (i === 1 ? 1 : 0))) - 3 * 3600e3 + 24 * 3600e3;
+        const bas = bit - gunSayisi * 24 * 3600e3;
+        const kesitler = await izleme.kesitler({ bas, bit, tv });
+        json(res, 200, { bas, bit, kesitler, ozet: ozetle(kesitler, { bas, bit }) });
         return;
       }
       if (req.method === 'GET' && url.pathname === '/zamanlayici') {
@@ -750,6 +795,10 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
           const r = await t.sirayla(() => t.girisDegistir(hedef));
           log(`[tv] ${t.id} giriş → ${hedef} (${r.uygulama})`);
           json(res, 200, { ok: true, ...r });
+          return;
+        }
+        if (url.pathname === '/ses') {
+          json(res, 200, { ok: true, ...(await t.sirayla(() => t.sesAyarla(g.seviye))) });
           return;
         }
         if (url.pathname === '/ekran-guc') {
@@ -848,7 +897,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   });
   await zamanlayici.yukle();
   zamanlayici.baslat();
-  const sunucu = sunucuKur(tvler, { rehber, zamanlayici });
+  // İzleme kaydı (kumanda → İzleme geçmişi): yalnız açıkça istenirse — kişisel veri, ajanın durum dizininde kalır.
+  let izleme = null;
+  if (process.env.TV_AJAN_IZLEME === '1') {
+    izleme = new IzlemeKaydi({ dizin: join(DURUM_DIZINI, 'izleme'), tvler, log: console.log });
+    await izleme.yukle();
+    izleme.baslat();
+    console.log('[izleme] kayıt açık (30 sn\'de bir, 365 gün saklanır)');
+  }
+  const sunucu = sunucuKur(tvler, { rehber, zamanlayici, izleme });
   sunucu.listen(PORT, HOST, () => {
     const ozet = tvler.map((t) => `${t.id}${t.anahtar ? '' : ' (anahtarsız!)'}${t.mac ? '' : ' (MAC yok — açılamaz)'}`).join(', ');
     console.log(`[tv-ajan] ${HOST}:${PORT} dinleniyor · TV'ler: ${ozet} · rehber: ${DURUM_DIZINI}`);
@@ -857,7 +914,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const isit = () => rehber.gun(trGunu(Date.now())).catch(() => {});
   isit();
   setInterval(isit, 3 * 60 * 60 * 1000);
-  const kapan = () => { zamanlayici.durdur(); for (const t of tvler) t.birak(); sunucu.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000).unref(); };
+  const kapan = () => { zamanlayici.durdur(); izleme?.durdur(); for (const t of tvler) t.birak(); sunucu.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000).unref(); };
   process.on('SIGTERM', kapan);
   process.on('SIGINT', kapan);
 }
