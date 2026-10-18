@@ -198,7 +198,9 @@ export class Tv {
     this.liste = null;
     this.listeZamani = 0;
     this.uygulamaAdlari = null;
-    this.appleUygulama = null;      // Apple TV'nin bağlı olduğu HDMI girişinin uygulama kimliği
+    // Apple TV'nin bağlı olduğu HDMI girişinin uygulama kimliği. Yapılandırmada `appletv.giris` verilmişse o;
+    // yoksa LG'nin giriş adından ("Apple TV", "Apple OTT") bulunur.
+    this.appleUygulama = (appletv && appletv.giris) || null;
   }
 
   /** Aynı TV'ye işler sırayla gider: iki tuş birbirinin ortasına girmez. */
@@ -878,6 +880,7 @@ function tvleriYukle(rehber, teshisDizini, atv = null) {
     if (t.appletv && (!/^[\d.]{7,15}$/.test(t.appletv.ip || '') || !/^[A-Za-z0-9:-]{6,40}$/.test(t.appletv.id || ''))) {
       throw new Error(`geçersiz Apple TV kaydı (${t.id})`);
     }
+    if (t.appletv?.giris && !/^com\.webos\.app\.hdmi\d$/.test(t.appletv.giris)) throw new Error(`geçersiz Apple TV girişi (${t.id}): ${t.appletv.giris}`);
     return new Tv(t, anahtarlar[t.ip] || null, { rehber, teshisDizini, log: console.log, atv });
   });
 }

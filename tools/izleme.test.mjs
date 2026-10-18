@@ -118,3 +118,27 @@ test('Apple TV: oynayan içerik kesite uygulama + başlık (kanal) olarak girer;
   assert.equal(bos.program, null);
   assert.equal(bos.uygulama, 'YouTube');
 });
+
+test('duraklatma: Apple TV oynatması duraklatılınca ayrı (pasif) kesit; özet izleme süresine katmaz', async () => {
+  const k = kur();
+  await k.iz.yukle();
+  const yt = (durum) => ({ acik: true, kaynak: 'apple', oynayan: { uygulama: 'YouTube', baslik: 'Bir Video', sanatci: 'Bir Kanal', durum } });
+  k.durumlar.tv1 = yt('playing');
+  await k.adim();                                   // 20:00:30 oynuyor
+  await k.adim(10);                                 // 20:10:30
+  k.durumlar.tv1 = yt('paused');
+  await k.adim(0.5);                                // 20:11 duraklatıldı
+  await k.adim(30);                                 // 20:41 hâlâ duraklatılmış
+  k.durumlar.tv1 = yt('playing');
+  await k.adim(0.5);                                // 20:41:30 devam
+  await k.adim(5);                                  // 20:46:30
+  const ks = await k.iz.kesitler({ bas: tr(2026, 10, 18, 0), bit: tr(2026, 10, 19, 0) });
+  assert.deepEqual(ks.map((x) => x.pasif || null), [null, 'duraklatildi', null]);
+  assert.equal(ks[1].program, 'Bir Video (Bir Kanal)');
+  const o = ozetle(ks, { bas: tr(2026, 10, 18, 0), bit: tr(2026, 10, 19, 0) });
+  assert.equal(o.toplam, 46 * 60000);
+  assert.equal(o.pasif, 30.5 * 60000);
+  assert.equal(o.izlenen, 15.5 * 60000);
+  assert.equal(o.uygulama.YouTube, 15.5 * 60000);
+  k.temizle();
+});

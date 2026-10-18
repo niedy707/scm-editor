@@ -6,11 +6,12 @@
  *  - Kapanma için iki ardışık "kapalı" örnek gerekir: tek bir ağ aksaklığı izlemeyi bölmesin. Kesitin bitişi
  *    o zaman bile SON GÖRÜLDÜĞÜ an olur (kapanmayı fark ettiğimiz an değil).
  *  - Ajan yeniden başlarsa açık kesit dosyadan okunur; aradaki boşluk izleme sayılmaz (son görülmede kapatılır).
- *  - Apple TV'nin içinde ne oynadığı bilinmez (AirPlay eşleştirmesi yok; her soru Apple TV'yi uyandırır) —
- *    kaynak "apple" olarak, kumandadan açılan uygulama biliniyorsa onunla kaydedilir.
+ *  - Apple TV'de oynayan (AirPlay eşleştirmesiyle) uygulama + içerik olarak yazılır. Oynatma DURAKLATILMIŞSA kesit
+ *    `pasif: 'duraklatildi'` taşır: TV açık ama izlenmiyor — özet bunu izleme süresine katmaz, ayrı gösterir.
+ *    (LG'nin kendi uygulamalarında oynatma durumu okunamıyor; orada duraklatma izleme sayılır.)
  *
  * Kayıt: <dizin>/YYYY-MM-DD.jsonl (İstanbul günü, kesitin BAŞLADIĞI güne), satır = kapanmış kesit:
- *   { tv, bas, bit, kaynak, kanal: {no, ad} | null, program, uygulama }
+ *   { tv, bas, bit, kaynak, kanal: {no, ad} | null, program, uygulama, ekranKapali?, pasif? }
  * Açık kesitler <dizin>/acik.json. `saklaGun` günden eski dosyalar silinir. Bu veri kişiseldir: yalnız ajanın
  * durum dizininde durur, hiçbir yere gönderilmez; okunması belirteçli /izleme ucundan.
  */
@@ -35,10 +36,12 @@ export function kesitAnahtari(d) {
     const ad = [dizi, o.baslik].filter(Boolean).join(' — ');
     program = ad ? `${ad}${o.sanatci && !o.dizi ? ` (${o.sanatci})` : ''}` : null;
   }
-  return { kaynak: d.kaynak || 'diger', kanal, program, uygulama, ekranKapali: !!d.ekranKapali };
+  // Duraklatılmış oynatma: TV açık, içerik ekranda ama izlenmiyor ("açık ama pasif" — kullanıcı, 18.10.2026).
+  const pasif = o && o.durum === 'paused' ? 'duraklatildi' : null;
+  return { kaynak: d.kaynak || 'diger', kanal, program, uygulama, ekranKapali: !!d.ekranKapali, pasif };
 }
 const ayni = (a, b) => !!a && !!b && a.kaynak === b.kaynak && a.program === b.program && a.uygulama === b.uygulama
-  && a.ekranKapali === b.ekranKapali && (a.kanal?.no ?? null) === (b.kanal?.no ?? null);
+  && a.ekranKapali === b.ekranKapali && (a.pasif || null) === (b.pasif || null) && (a.kanal?.no ?? null) === (b.kanal?.no ?? null);
 
 export class IzlemeKaydi {
   /**
@@ -105,6 +108,7 @@ export class IzlemeKaydi {
   _yaz(tvId, k, bit) {
     const satir = { tv: tvId, bas: k.bas, bit: Math.max(bit, k.bas), kaynak: k.kaynak, kanal: k.kanal || null, program: k.program || null, uygulama: k.uygulama || null };
     if (k.ekranKapali) satir.ekranKapali = true;
+    if (k.pasif) satir.pasif = k.pasif;
     this.yaziliyor = this.yaziliyor.then(() => appendFile(join(this.dizin, `${trGun(k.bas)}.jsonl`), JSON.stringify(satir) + '\n'))
       .catch((e) => this.log(`[izleme] yazılamadı: ${e.message}`));
     return this.yaziliyor;
@@ -144,16 +148,19 @@ export class IzlemeKaydi {
     }
     for (const k of this.acik.values()) {
       if ((!tv || k.tv === tv) && k.son > bas && k.bas < bit) {
-        sonuc.push({ tv: k.tv, bas: k.bas, bit: k.son, kaynak: k.kaynak, kanal: k.kanal, program: k.program, uygulama: k.uygulama, ...(k.ekranKapali ? { ekranKapali: true } : {}), acik: true });
+        sonuc.push({ tv: k.tv, bas: k.bas, bit: k.son, kaynak: k.kaynak, kanal: k.kanal, program: k.program, uygulama: k.uygulama, ...(k.ekranKapali ? { ekranKapali: true } : {}), ...(k.pasif ? { pasif: k.pasif } : {}), acik: true });
       }
     }
     return sonuc.sort((a, b) => a.bas - b.bas);
   }
 }
 
-/** Kesitlerden özet: toplam açık süre, kaynak/kanal/program/uygulama başına süre, saat başına dağılım (ms). */
+/**
+ * Kesitlerden özet (ms): `toplam` = TV açık, `izlenen` = bunun duraklatılmamış kısmı, `pasif` = duraklatılmış.
+ * Kaynak/kanal/program/uygulama ve saat dağılımı yalnız İZLENEN süreyi sayar; `tv` açık kalma süresidir.
+ */
 export function ozetle(kesitler, { bas, bit }) {
-  const ozet = { toplam: 0, kaynak: {}, kanal: {}, program: {}, uygulama: {}, saat: new Array(24).fill(0), tv: {} };
+  const ozet = { toplam: 0, izlenen: 0, pasif: 0, kaynak: {}, kanal: {}, program: {}, uygulama: {}, saat: new Array(24).fill(0), tv: {} };
   const ekle = (m, k, ms) => { if (k) m[k] = (m[k] || 0) + ms; };
   for (const k of kesitler) {
     const b = Math.max(k.bas, bas);
@@ -162,6 +169,8 @@ export function ozetle(kesitler, { bas, bit }) {
     const ms = e - b;
     ozet.toplam += ms;
     ekle(ozet.tv, k.tv, ms);
+    if (k.pasif) { ozet.pasif += ms; continue; }
+    ozet.izlenen += ms;
     ekle(ozet.kaynak, k.kaynak, ms);
     if (k.kanal) ekle(ozet.kanal, k.kanal.ad || String(k.kanal.no), ms);
     ekle(ozet.program, k.program && `${k.kanal?.ad || ''} · ${k.program}`, ms);
