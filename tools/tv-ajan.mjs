@@ -51,7 +51,8 @@
  *   POST /epg      {tv, adlar[]}    → bu kanallarda şu an ve sonra ne var (rehberden)
  *   POST /kapat    {tv}             → TV'yi kapat
  *   GET  /ses?tv=  · POST /ses {tv, seviye 0-100}  → ses düzeyi (Ch / Vol penceresindeki şerit)
- *   GET  /izleme?tv=&gun=YYYY-MM-DD&gunSayisi=N    → izleme geçmişi + özet (TV_AJAN_IZLEME=1 ise)
+ *   GET  /izleme?tv=&gun=YYYY-MM-DD&gunSayisi=N    → izleme geçmişi + özet (TV_AJAN_IZLEME=1 ise); YouTube
+ *                                                     kesitlerinde bulunabildiyse `youtube` = video kimliği
  */
 
 import http from 'node:http';
@@ -70,6 +71,7 @@ import { wolGonder } from './net/wol.mjs';
 import { Zamanlayici } from './net/zamanlayici.mjs';
 import { AppleTvKopru } from './net/atv-kopru.mjs';
 import { IzlemeKaydi, ozetle, trGun } from './net/izleme.mjs';
+import { YoutubeBulucu, ayir, anahtar as ytAnahtar } from './net/youtube-bul.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -634,7 +636,35 @@ async function govdeOku(req, sinir = 4096) {
 
 const adListesi = (g, en) => (Array.isArray(g.adlar) ? g.adlar.slice(0, en).map((a) => String(a).slice(0, 60)) : []);
 
-export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null } = {}) {
+/**
+ * YouTube kesitlerine video kimliği ekler (`k.youtube`). Önbellekte olan hemen; yeniler en çok `butceMs`
+ * beklenir, yetişmeyenler arka planda çözülür ve sonraki istekte gelir. Bulunamayan kesit kimliksiz kalır.
+ */
+export async function youtubeEkle(kesitler, youtube, butceMs = 6000) {
+  if (!youtube) return;
+  const yt = kesitler.filter((k) => /youtube/i.test(k.uygulama || '') && k.program);
+  const sorulacak = new Map();
+  for (const k of yt) {
+    const v = ayir(k.program);
+    const id = youtube.onbellekte(v.baslik, v.kanal);
+    if (id) k.youtube = id;
+    else if (id === undefined) sorulacak.set(ytAnahtar(v.baslik, v.kanal), v);
+  }
+  if (!sorulacak.size) return;
+  const bulunan = new Map();
+  const isler = [...sorulacak].map(([a, v]) => youtube.bul(v).then((id) => { if (id) bulunan.set(a, id); }));
+  let zaman;
+  await Promise.race([Promise.allSettled(isler), new Promise((r) => { zaman = setTimeout(r, butceMs); })]);
+  clearTimeout(zaman);
+  for (const k of yt) {
+    if (k.youtube) continue;
+    const v = ayir(k.program);
+    const id = bulunan.get(ytAnahtar(v.baslik, v.kanal));
+    if (id) k.youtube = id;
+  }
+}
+
+export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null, youtube = null } = {}) {
   const byId = new Map(tvler.map((t) => [t.id, t]));
   const tvAl = (id) => {
     const t = byId.get(String(id || ''));
@@ -728,6 +758,7 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         const bit = Date.UTC(...gun.split('-').map((x, i) => Number(x) - (i === 1 ? 1 : 0))) - 3 * 3600e3 + 24 * 3600e3;
         const bas = bit - gunSayisi * 24 * 3600e3;
         const kesitler = await izleme.kesitler({ bas, bit, tv });
+        await youtubeEkle(kesitler, youtube);
         json(res, 200, { bas, bit, kesitler, ozet: ozetle(kesitler, { bas, bit }) });
         return;
       }
@@ -926,13 +957,17 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   zamanlayici.baslat();
   // İzleme kaydı (kumanda → İzleme geçmişi): yalnız açıkça istenirse — kişisel veri, ajanın durum dizininde kalır.
   let izleme = null;
+  let youtube = null;
   if (process.env.TV_AJAN_IZLEME === '1') {
+    // İzlenen YouTube videosunun bağlantısı için (Apple TV video kimliği vermiyor) — önbellek izleme dizininde.
+    youtube = new YoutubeBulucu({ dizin: join(DURUM_DIZINI, 'izleme'), log: console.log });
+    await youtube.yukle();
     izleme = new IzlemeKaydi({ dizin: join(DURUM_DIZINI, 'izleme'), tvler, log: console.log });
     await izleme.yukle();
     izleme.baslat();
     console.log('[izleme] kayıt açık (30 sn\'de bir, 365 gün saklanır)');
   }
-  const sunucu = sunucuKur(tvler, { rehber, zamanlayici, izleme });
+  const sunucu = sunucuKur(tvler, { rehber, zamanlayici, izleme, youtube });
   sunucu.listen(PORT, HOST, () => {
     const ozet = tvler.map((t) => `${t.id}${t.anahtar ? '' : ' (anahtarsız!)'}${t.mac ? '' : ' (MAC yok — açılamaz)'}`).join(', ');
     console.log(`[tv-ajan] ${HOST}:${PORT} dinleniyor · TV'ler: ${ozet} · rehber: ${DURUM_DIZINI}`);

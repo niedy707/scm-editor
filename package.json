@@ -8,7 +8,7 @@
     "tv:read": "node tools/lgtv-read.mjs",
     "turksat:fetch": "node tools/fetch-turksat.mjs",
     "fixtures": "node tools/make-fixtures.mjs",
-    "test": "node tools/roundtrip-test.mjs && node --test tools/tv-ajan.test.mjs tools/zamanlayici.test.mjs tools/izleme.test.mjs",
+    "test": "node tools/roundtrip-test.mjs && node --test tools/tv-ajan.test.mjs tools/zamanlayici.test.mjs tools/izleme.test.mjs tools/youtube-bul.test.mjs",
     "web": "node tools/serve.mjs"
   },
   "engines": {
