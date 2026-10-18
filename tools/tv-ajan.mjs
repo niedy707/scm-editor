@@ -26,6 +26,7 @@
  *   TV_AJAN_PORT        varsayılan 3027 (PORTS_REGISTRY.md)
  *   TV_AJAN_TVLER       TV listesi (varsayılan <kök>/tv-ajan.tvler.json — git'e girmez)
  *   TV_AJAN_NETFLIX_ARALIK_DK  başlığı eksik Netflix kesitleri için izleme geçmişi sorgu aralığı (varsayılan 60)
+ *   TV_AJAN_NETFLIX_EKRAN      1 → Netflix başlığını ekran görüntüsünden de oku (OCR; varsayılan kapalı)
  *   TV_AJAN_ANAHTARLAR  eşleşme anahtarları (varsayılan <kök>/.lgtv-clients.json)
  *   TV_AJAN_DURUM       rehber önbelleği dizini (varsayılan: systemd STATE_DIRECTORY, yoksa data/yerel/rehber)
  *
@@ -91,9 +92,11 @@ const TVLER_YOLU = process.env.TV_AJAN_TVLER || resolve(ROOT, 'tv-ajan.tvler.jso
 // Apple TV (pyatv): kurulu Python ve yardımcı betik. Kimlik dosyası DURUM_DIZINI/pyatv.conf (eşleştirme yazar).
 const PYATV_PYTHON = process.env.TV_AJAN_PYATV || '/opt/pyatv/bin/python3';
 const ATV_YARDIMCI = resolve(ROOT, 'tools/atv-yardimci.py');
-// Netflix başlığı ekrandan (net/netflix-ekran.mjs): sistem Python'u + PIL + Tesseract gerekir; yoksa kapalı.
+// Netflix başlığı ekrandan (net/netflix-ekran.mjs): sistem Python'u + PIL + Tesseract gerekir. VARSAYILAN KAPALI
+// (kullanıcı, 18.10.2026: izleme geçmişi yeterli, OCR gereksiz yük — oynarken 45 sn'de bir ~5,5 sn); açmak için
+// TV_AJAN_NETFLIX_EKRAN=1.
 const EKRAN_YAZI = resolve(ROOT, 'tools/ekran-yazi.py');
-const TESSERACT_VAR = existsSync('/usr/bin/tesseract');
+const TESSERACT_VAR = process.env.TV_AJAN_NETFLIX_EKRAN === '1' && existsSync('/usr/bin/tesseract');
 const ANAHTAR_YOLU = process.env.TV_AJAN_ANAHTARLAR || resolve(ROOT, '.lgtv-clients.json');
 const DURUM_DIZINI = process.env.TV_AJAN_DURUM || process.env.STATE_DIRECTORY || resolve(ROOT, 'data/yerel/rehber');
 
