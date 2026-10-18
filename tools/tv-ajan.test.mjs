@@ -486,7 +486,7 @@ test('HTTP: /tvler bir TV uyandırılırken sırada beklemez', async () => {
       iste('/tvler').then((x) => x.json()),
       new Promise((_, red) => setTimeout(() => red(new Error('/tvler sırada bekledi')), 1000)),
     ]);
-    assert.deepEqual(r, { tvler: [{ id: 'oda', acik: true }] });
+    assert.deepEqual(r, { tvler: [{ id: 'oda', acik: true, kilit: null }] });
   });
   birak();
 });

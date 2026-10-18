@@ -53,6 +53,7 @@
  *   GET  /ses?tv=  · POST /ses {tv, seviye 0-100}  → ses düzeyi (Ch / Vol penceresindeki şerit)
  *   GET  /izleme?tv=&gun=YYYY-MM-DD&gunSayisi=N    → izleme geçmişi + özet (TV_AJAN_IZLEME=1 ise); YouTube
  *                                                     kesitlerinde bulunabildiyse `youtube` = video kimliği
+ *   GET  /kilit  · POST /kilit {tv, dk?}  · DELETE /kilit?tv=   → TV kilidi (dk yok → süresiz) — net/kilit.mjs
  *   GET  /engel  · POST /engel {metin, tur?}  · DELETE /engel?id=  · POST /engel/ayar {acik}
  *                                                   → YouTube engelleri (kurallar, son engellenenler) — net/engel.mjs
  */
@@ -75,6 +76,7 @@ import { AppleTvKopru } from './net/atv-kopru.mjs';
 import { IzlemeKaydi, ozetle, trGun } from './net/izleme.mjs';
 import { YoutubeBulucu, ayir, anahtar as ytAnahtar } from './net/youtube-bul.mjs';
 import { EngelListesi, EngelBekcisi } from './net/engel.mjs';
+import { TvKilidi, KilitBekcisi } from './net/kilit.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -189,6 +191,7 @@ export class Tv {
     this.mac = mac || null;
     this.appletv = appletv || null;  // { ip, id } — bu TV'ye bağlı Apple TV (pyatv)
     this.atv = atv;                  // AppleTvKopru (tüm TV'ler için tek)
+    this.kilit = null;               // TvKilidi (net/kilit.mjs) — ana akışta bağlanır
     this.appleSon = null;            // Apple TV'de en son açtırılan uygulama (netflix…), girişten çıkınca silinir
     this.anahtar = anahtar;
     this.rehber = rehber;
@@ -269,8 +272,27 @@ export class Tv {
     try { return await this.iste('ssap://com.webos.service.tvpower/power/getPowerState', null, 2000); } catch { return null; }
   }
 
+  /**
+   * TV kilitliyse (ebeveyn denetimi, net/kilit.mjs) açmaya yol açabilecek her komut burada durur: 423.
+   * Kumandanın kanal/giriş/açma uçları ve zamanlayıcı `uyan()`dan, Apple TV komutları buradan geçer.
+   */
+  kilitDenetle() {
+    const k = this.kilit?.bilgi(this.id);
+    if (!k) return;
+    const saat = k.bitis ? new Date(k.bitis + 3 * 3600e3).toISOString().slice(11, 16) : null;
+    throw new HttpHata(423, `${this.ad} kilitli${saat ? ` (${saat}'e kadar)` : ''} — açılamaz. Kilidi "Engeller" sayfasından açabilirsiniz.`);
+  }
+
+  /** Kilit bekçisi için: TV şu an açık mı. Beklemede ya da ulaşılamıyorsa false. Güç durumu ucu olmayan TV'de ön uygulamaya bakılır. */
+  async acikMi() {
+    const g = await this.gucDurumu();
+    if (g) return !gucKapaliMi(g);
+    try { return !!(await this.iste('ssap://com.webos.applicationManager/getForegroundAppInfo', null, 2000)).appId; } catch { return false; }
+  }
+
   /** TV kapalıysa açar ve kumandaya hazır olana kadar bekler; açıksa hemen döner. */
   async uyan() {
+    this.kilitDenetle();
     const r = await uyandir({
       ...this.uyanma,
       hazirMi: () => this.hazirMi(),
@@ -529,12 +551,14 @@ export class Tv {
     const tus = ATV_TUSLARI[ad];
     if (!tus) throw new HttpHata(400, `Apple TV'de karşılığı olmayan tuş: ${ad}`);
     if (!this.appleTvVar()) throw new HttpHata(409, `${this.ad}: Apple TV bağlı değil`);
+    this.kilitDenetle();   // Apple TV tuşu Apple TV'yi, o da CEC ile TV'yi uyandırır
     await this.atv.iste(this.appletv, 'tus', { tus });
   }
 
   /** Apple TV'de odaktaki yazı alanına metin (arama kutusu). */
   async appleMetin(metin) {
     if (!this.appleTvVar()) throw new HttpHata(409, `${this.ad}: Apple TV bağlı değil`);
+    this.kilitDenetle();
     await this.atv.iste(this.appletv, 'metin', { metin });
   }
 
@@ -695,7 +719,7 @@ export async function youtubeEkle(kesitler, youtube, butceMs = 6000) {
   }
 }
 
-export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null, youtube = null, engel = null } = {}) {
+export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null, youtube = null, engel = null, kilit = null } = {}) {
   const byId = new Map(tvler.map((t) => [t.id, t]));
   const tvAl = (id) => {
     const t = byId.get(String(id || ''));
@@ -710,7 +734,7 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
       if (req.method === 'GET' && url.pathname === '/tvler') {
         // Sıraya GİRMEZ: bir TV uyandırılırken (≤40 sn) panelin durum sorgusu beklememeli.
         const durumlar = await Promise.all(tvler.map((t) => t.durum()));
-        json(res, 200, { tvler: durumlar });
+        json(res, 200, { tvler: durumlar.map((d) => ({ ...d, kilit: kilit?.bilgi(d.id) || null })) });
         return;
       }
       if (req.method === 'GET' && url.pathname === '/ekran-akis') {
@@ -792,6 +816,27 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         await youtubeEkle(kesitler, youtube);
         json(res, 200, { bas, bit, kesitler, ozet: ozetle(kesitler, { bas, bit }) });
         return;
+      }
+      // TV kilidi (ebeveyn denetimi): kilitli TV açılamaz, açılırsa kapatılır. dk yoksa/null → süresiz.
+      if (url.pathname === '/kilit') {
+        if (!kilit) throw new HttpHata(503, 'kilit kurulu değil');
+        if (req.method === 'GET') { json(res, 200, kilit.durum()); return; }
+        if (req.method === 'POST') {
+          const g = await govdeOku(req);
+          const t = tvAl(g.tv);
+          await kilit.kilitle(t.id, g.dk ?? null);
+          log(`[kilit] ${t.id} kilitlendi (${g.dk ? `${g.dk} dk` : 'süresiz'})`);
+          json(res, 200, { ok: true, ...kilit.durum() });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const t = tvAl(url.searchParams.get('tv'));
+          await kilit.ac(t.id);
+          log(`[kilit] ${t.id} kilidi açıldı`);
+          json(res, 200, { ok: true, ...kilit.durum() });
+          return;
+        }
+        throw new HttpHata(405, 'yöntem desteklenmiyor');
       }
       // YouTube engelleri (ebeveyn denetimi): kurallar + son engellenenler; ekle/sil/aç-kapat.
       if (url.pathname === '/engel' || url.pathname === '/engel/ayar') {
@@ -1027,7 +1072,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     bekci.baslat();
     console.log(`[engel] bekçi açık (${engel.durum().kurallar.length} kural${engel.veri.acik ? '' : ', engelleme KAPALI'})`);
   }
-  const sunucu = sunucuKur(tvler, { rehber, zamanlayici, izleme, youtube, engel });
+  // TV kilidi: kilitli TV'ye açma komutu gitmez (Tv.kilitDenetle); kendi kumandasıyla açılırsa bekçi kapatır.
+  const kilit = new TvKilidi({ dizin: DURUM_DIZINI, log: console.log });
+  await kilit.yukle();
+  for (const t of tvler) t.kilit = kilit;
+  new KilitBekcisi({ tvler, kilit, log: console.log }).baslat();
+  const kilitli = Object.keys(kilit.durum().kilitler);
+  console.log(`[kilit] bekçi açık${kilitli.length ? ` · kilitli: ${kilitli.join(', ')}` : ''}`);
+  const sunucu = sunucuKur(tvler, { rehber, zamanlayici, izleme, youtube, engel, kilit });
   sunucu.listen(PORT, HOST, () => {
     const ozet = tvler.map((t) => `${t.id}${t.anahtar ? '' : ' (anahtarsız!)'}${t.mac ? '' : ' (MAC yok — açılamaz)'}`).join(', ');
     console.log(`[tv-ajan] ${HOST}:${PORT} dinleniyor · TV'ler: ${ozet} · rehber: ${DURUM_DIZINI}`);
