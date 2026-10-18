@@ -130,11 +130,15 @@ class Yardimci:
             await atv.power.turn_off()
             return {}
         if is_ == "uygulama-kapat":
-            # Öndeki uygulamayı kapatır (YouTube engeli 3. kademe): uygulama değiştirici (Ana Ekran ×2) açılınca
-            # odakta az önce açık olan uygulama durur; yukarı kaydırma onu kapatır; sonra ana ekran.
+            # Öndeki uygulamayı kapatır (YouTube engeli 2. kademe): uygulama değiştirici (Ana Ekran ×2) açılınca
+            # odakta az önce açık olan uygulama durur; yukarı kaydırma onu kapatır; Ana Ekran değiştiriciyi kapatır.
+            # Seçim ana ekranda kapatılan uygulamanın simgesinde kalır — bir Ana Ekran daha onu ilk uygulamaya taşır
+            # (kullanıcı, 18.10.2026: "son seçili uygulama olan YouTube da bekliyor olmasın").
             await atv.remote_control.home(InputAction.DoubleTap)
             await asyncio.sleep(1.5)
             await atv.touch.swipe(500, 850, 500, 100, 250)
+            await asyncio.sleep(1.0)
+            await atv.remote_control.home()
             await asyncio.sleep(1.0)
             await atv.remote_control.home()
             return {}
