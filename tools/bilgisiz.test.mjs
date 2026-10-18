@@ -23,7 +23,7 @@ test('Apple TV "oynuyor" demiyor, uyanık ve ekranda hareket var → bilgisiz uy
   assert.equal(tv._bilgisizIsle(youtubeDuraklatilmis).uygulama, 'YouTube', 'ilk sorguda ölçüm başlar, beklemez');
   await bekle();
   const o = tv._bilgisizIsle(youtubeDuraklatilmis);
-  assert.deepEqual([o.uygulama, o.durum, o.baslik, o.tahmin], ['Bilinmeyen uygulama', 'playing', null, 'ekran-hareketi']);
+  assert.deepEqual([o.uygulama, o.durum, o.baslik, o.tahmin], ['Apple TV', 'playing', null, 'ekran-hareketi']);
   // Apple TV yeniden "oynuyor" derse (YouTube'a dönüldü) tahmin düşer
   assert.equal(tv._bilgisizIsle({ uygulama: 'YouTube', baslik: 'Yeni', durum: 'playing' }).baslik, 'Yeni');
   assert.equal(tv._bilgisiz, null);

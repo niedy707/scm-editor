@@ -26,8 +26,8 @@
  *   TV_AJAN_PORT        varsayılan 3027 (PORTS_REGISTRY.md)
  *   TV_AJAN_TVLER       TV listesi (varsayılan <kök>/tv-ajan.tvler.json — git'e girmez)
  *   TV_AJAN_NETFLIX_EKRAN      1 → Netflix başlığını ekran görüntüsünden de oku (OCR; varsayılan kapalı)
- *   TV_AJAN_BILGISIZ_UYGULAMA  Apple TV'de oynatma bilgisi vermeyen, ekranda hareket olan uygulamanın adı
- *                              (varsayılan "Bilinmeyen uygulama"; bu evde "Flex IPTV")
+ *   TV_AJAN_BILGISIZ_UYGULAMA  Apple TV'de oynatma bilgisi vermeyen, ekranda hareket olan uygulamanın kayıttaki adı
+ *                              (varsayılan "Apple TV" — hangi uygulama olduğu ekrandan anlaşılamıyor)
  *   TV_AJAN_ANAHTARLAR  eşleşme anahtarları (varsayılan <kök>/.lgtv-clients.json)
  *   TV_AJAN_DURUM       rehber önbelleği dizini (varsayılan: systemd STATE_DIRECTORY, yoksa data/yerel/rehber)
  *
@@ -104,7 +104,9 @@ const TESSERACT_VAR = process.env.TV_AJAN_NETFLIX_EKRAN === '1' && existsSync('/
 // Apple TV'de oynatma bilgisi YAYINLAMAYAN uygulama (ör. Flex IPTV): ekranda hareket varsa bu adla kaydedilir.
 const EKRAN_HAREKET = resolve(ROOT, 'tools/ekran-hareket.py');
 const execFileP = promisify(execFile);
-const BILGISIZ_UYGULAMA = process.env.TV_AJAN_BILGISIZ_UYGULAMA || 'Bilinmeyen uygulama';
+// Hangi uygulama olduğu bilinemez (Netflix menüsündeki fragmanlar da hareketli — 18.10.2026'da "Flex IPTV" sanıldı):
+// kullanıcı: "emin olamıyorsak … sadece 'Apple TV' yaz".
+const BILGISIZ_UYGULAMA = process.env.TV_AJAN_BILGISIZ_UYGULAMA || 'Apple TV';
 const HAREKET_ESIGI = 4;   // 96×54 gri ortalama fark: oynayan video 30–60, durağan ~0 (ölçüldü 18.10.2026)
 const ANAHTAR_YOLU = process.env.TV_AJAN_ANAHTARLAR || resolve(ROOT, '.lgtv-clients.json');
 const DURUM_DIZINI = process.env.TV_AJAN_DURUM || process.env.STATE_DIRECTORY || resolve(ROOT, 'data/yerel/rehber');
