@@ -61,7 +61,9 @@ export function ekranYazisi(jpeg, { python = 'python3', betik, zamanAsimiMs = 45
 /**
  * TV başına Netflix okuyucu. `tazele(oynayan)` her "şu an oynayan" sorgusunda çağrılır: gerekiyorsa arka planda
  * ekranı okutur (beklemez); bilinen başlığı oynayana işler (dizi/sezon/bolum/baslik, konum/sure).
- *  - Duraklatılmışken oynatıcı ekranda: başlık yoksa 8 sn'de bir, varsa 2 dk'da bir (bölüm değişmiş olabilir).
+ *  - Oynamıyorken (duraklatılmış — Netflix bunu "idle" bildiriyor, pyatv #2888 — ya da menüde): başlık yoksa 8 sn'de
+ *    bir, oynatıcı ekranda bulunamadıkça aralık iki katına çıkar (en çok 60 sn: menüde gezinirken Pi'yi yormasın —
+ *    bir okuma Pi'de ~5,5 sn); başlık varsa 2 dk'da bir (bölüm değişmiş olabilir).
  *  - Oynarken: başlık yoksa 45 sn'de bir (oynatma başında oynatıcı görünür); varsa okunmaz.
  *  - Netflix'ten çıkılınca ya da oynayanın `hash`'i değişince bilinen başlık düşer (yeni içerik).
  */
@@ -73,6 +75,8 @@ export class NetflixOkuyucu {
     this.hash = null;
     this.sonDeneme = 0;
     this.calisiyor = false;
+    this.bosOkuma = 0;     // art arda "oynatıcı ekranda değil" okumaları (geri çekilme)
+    this.sonDurum = null;
   }
 
   tazele(o) {
@@ -81,8 +85,9 @@ export class NetflixOkuyucu {
     if (o.hash && this.hash && o.hash !== this.hash) { this.bilinen = null; this.aday = null; }
     if (o.hash) this.hash = o.hash;
     const simdi = this.simdi();
-    const duraklatildi = o.durum === 'paused';
-    const ara = this.bilinen ? (duraklatildi ? 120000 : Infinity) : (duraklatildi ? 8000 : 45000);
+    const oynuyor = o.durum === 'playing';
+    if (o.durum !== this.sonDurum) { this.sonDurum = o.durum; this.bosOkuma = 0; }   // duraklatıldı/oynadı: yeniden dene
+    const ara = this.bilinen ? (oynuyor ? Infinity : 120000) : (oynuyor ? 45000 : Math.min(8000 * 2 ** this.bosOkuma, 60000));
     if (!this.calisiyor && simdi - this.sonDeneme >= ara) this._oku();
     return this.bilinen ? this.uygula(o) : o;
   }
@@ -106,7 +111,8 @@ export class NetflixOkuyucu {
     this.sonDeneme = this.simdi();
     try {
       const okuma = netflixAyikla(await this.oku(await this.ekranAl()));
-      if (!okuma) return;
+      if (!okuma) { this.bosOkuma++; return; }
+      this.bosOkuma = 0;
       if (ayniOkuma(okuma, this.aday) || ayniOkuma(okuma, this.bilinen)) {
         if (!ayniOkuma(okuma, this.bilinen)) this.log(`[netflix] ekrandan okundu: ${okuma.baslik}${okuma.sezon != null ? ` S${okuma.sezon}B${okuma.bolum}` : ''}`);
         this.bilinen = { ...okuma, zaman: this.simdi() };

@@ -117,6 +117,9 @@ test('Apple TV: oynayan içerik kesite uygulama + başlık (kanal) olarak girer;
   const bos = kesitAnahtari({ acik: true, kaynak: 'apple', uygulamaAdi: 'HDMI 2', oynayan: { uygulama: 'YouTube', durum: 'idle' } });
   assert.equal(bos.program, null);
   assert.equal(bos.uygulama, 'YouTube');
+  assert.equal(bos.pasif, 'bekleme', 'menüde / ana ekranda: oynayan yok → bekleme (gri)');
+  assert.equal(kesitAnahtari({ acik: true, kaynak: 'apple', oynayan: { uygulama: 'Netflix', durum: 'playing' } }).pasif, null);
+  assert.equal(kesitAnahtari({ acik: true, kaynak: 'canli', kanal: { no: 1, ad: 'X' } }).pasif, null, 'canlı yayın hep izleme');
 });
 
 test('duraklatma: Apple TV oynatması duraklatılınca ayrı (pasif) kesit; özet izleme süresine katmaz', async () => {

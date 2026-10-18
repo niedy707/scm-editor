@@ -40,6 +40,22 @@ test('okuyucu: başlık ancak iki okuma tutarsa kabul edilir; oynayana dizi/böl
   assert.equal(n.bilinen, null, 'Netflix\'ten çıkınca düşer');
 });
 
+test('okuyucu: Netflix duraklatınca "idle" bildirir — o da okunur; oynatıcı bulunamadıkça aralık uzar (en çok 60 sn)', async () => {
+  const saat = { t: 1e12 };
+  let okuma = 0;
+  const n = new NetflixOkuyucu({ ekranAl: async () => Buffer.from('j'), oku: async () => { okuma++; return { sag_ust: [], sol_ust: [], alt: [] }; }, simdi: () => saat.t });
+  const bekle = () => new Promise((r) => setImmediate(r));
+  const idle = { uygulama: 'Netflix', durum: 'idle' };
+  n.tazele(idle); await bekle();
+  assert.equal(okuma, 1);
+  saat.t += 9000; n.tazele(idle); await bekle();
+  assert.equal(okuma, 1, '1 boş okumadan sonra 16 sn beklenir');
+  saat.t += 8000; n.tazele(idle); await bekle();
+  assert.equal(okuma, 2);
+  for (let i = 0; i < 10; i++) { saat.t += 61000; n.tazele(idle); await bekle(); }
+  assert.equal(okuma, 12, 'en çok 60 sn aralık');
+});
+
 test('okuyucu: oynarken başlık biliniyorsa ekran okunmaz; içerik (hash) değişince başlık düşer', async () => {
   const saat = { t: 1e12 };
   let okuma = 0;

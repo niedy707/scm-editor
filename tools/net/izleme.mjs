@@ -6,8 +6,9 @@
  *  - Kapanma için iki ardışık "kapalı" örnek gerekir: tek bir ağ aksaklığı izlemeyi bölmesin. Kesitin bitişi
  *    o zaman bile SON GÖRÜLDÜĞÜ an olur (kapanmayı fark ettiğimiz an değil).
  *  - Ajan yeniden başlarsa açık kesit dosyadan okunur; aradaki boşluk izleme sayılmaz (son görülmede kapatılır).
- *  - Apple TV'de oynayan (AirPlay eşleştirmesiyle) uygulama + içerik olarak yazılır. Oynatma DURAKLATILMIŞSA kesit
- *    `pasif: 'duraklatildi'` taşır: TV açık ama izlenmiyor — özet bunu izleme süresine katmaz, ayrı gösterir.
+ *  - Apple TV'de oynayan (AirPlay eşleştirmesiyle) uygulama + içerik olarak yazılır. Apple TV'de OYNAYAN yoksa kesit
+ *    `pasif` taşır: 'duraklatildi' (paused) ya da 'bekleme' (idle/stopped: ana ekran, menü — Netflix duraklatınca da
+ *    idle bildiriyor, pyatv #2888). TV açık ama izlenmiyor: özet bunu izleme süresine katmaz, ayrı (gri) gösterir.
  *    (LG'nin kendi uygulamalarında oynatma durumu okunamıyor; orada duraklatma izleme sayılır.)
  *
  * Kayıt: <dizin>/YYYY-MM-DD.jsonl (İstanbul günü, kesitin BAŞLADIĞI güne), satır = kapanmış kesit:
@@ -36,8 +37,9 @@ export function kesitAnahtari(d) {
     const ad = [dizi, o.baslik].filter(Boolean).join(' — ');
     program = ad ? `${ad}${o.sanatci && !o.dizi ? ` (${o.sanatci})` : ''}` : null;
   }
-  // Duraklatılmış oynatma: TV açık, içerik ekranda ama izlenmiyor ("açık ama pasif" — kullanıcı, 18.10.2026).
-  const pasif = o && o.durum === 'paused' ? 'duraklatildi' : null;
+  // Apple TV'de oynayan yok: TV açık ama izlenmiyor ("açık ama pasif" — kullanıcı, 18.10.2026). Durum bilinmiyorsa
+  // (Apple TV yanıt vermedi → oynayan yok) izleme sayılır.
+  const pasif = !o ? null : o.durum === 'paused' ? 'duraklatildi' : (['playing', 'loading', 'seeking'].includes(o.durum) ? null : 'bekleme');
   return { kaynak: d.kaynak || 'diger', kanal, program, uygulama, ekranKapali: !!d.ekranKapali, pasif };
 }
 const ayni = (a, b) => !!a && !!b && a.kaynak === b.kaynak && a.program === b.program && a.uygulama === b.uygulama
