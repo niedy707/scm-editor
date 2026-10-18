@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EngelListesi, EngelBekcisi, linkCoz, katla, kanalAdiAyikla, MESAJ } from './net/engel.mjs';
+import { EngelListesi, EngelBekcisi, linkCoz, katla, kanalAdiAyikla, MESAJ, UYARI } from './net/engel.mjs';
 
 test('link çözme: video ve kanal biçimleri; düz metin link sayılmaz', () => {
   assert.deepEqual(linkCoz('https://www.youtube.com/watch?v=abcdefghijk&t=30s'), { tur: 'video', id: 'abcdefghijk' });
@@ -94,6 +94,8 @@ test('bekçi: kademeli — 1. duraklat + geri ×2, yine oynatılırsa 2. YouTube
   const tv = sahteTv([yt('playing'), yt('paused')]);
   let kapatma = 0;
   tv.appleUygulamaKapat = async () => { kapatma++; };
+  const uyarilar = [];
+  tv.uyariGoster = async (satirlar, ms) => { uyarilar.push([satirlar, ms]); };
   const saat = { t: 1e12 };
   const b = new EngelBekcisi({ tvler: [tv], liste: l, bekle: async () => {}, simdi: () => saat.t });
   const oynat = async () => { tv.sira = [yt('playing'), yt('paused')]; return b.denetle(tv); };
@@ -108,6 +110,8 @@ test('bekçi: kademeli — 1. duraklat + geri ×2, yine oynatılırsa 2. YouTube
   saat.t += 60000;
   await oynat();
   assert.equal(kapatma, 1, '2. kademe: YouTube kapatılır');
+  assert.deepEqual(uyarilar, [[UYARI, 10000]], '… ardından ortada uyarı');
+  assert.match(UYARI.join(' '), /televizyonu tamamen kapatabilirim/);
   saat.t += 60000;
   await oynat();
   assert.equal(kapatma, 2, 'yine açılırsa yine kapatılır');

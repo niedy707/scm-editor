@@ -2,7 +2,7 @@
  * YouTube engelleri (ebeveyn denetimi) — listedeki bir video, kanal ya da anahtar kelime Apple TV'deki YouTube'da
  * OYNAMAYA başlayınca TV'de "Bu videoyu izleme izniniz yoktur" yazar ve kademeli durdurulur (kullanıcı, 18.10.2026):
  *   1. oynatma → duraklat + oynatıcıdan çık (geri ×2; tek "geri" yalnız oynatıcı düğmelerini gizliyor — ölçüldü)
- *   2. yine oynatılırsa → YouTube uygulamasını kapat.
+ *   2. yine oynatılırsa → YouTube uygulamasını kapat, ardından ekranın ortasında UYARI (10 sn).
  * Kademe aynı video 10 dk içinde yeniden oynatıldıkça artar; başka video ya da 10 dk sessizlik sayacı sıfırlar.
  *
  * Kurallar (`<dizin>/engeller.json`, ajanın durum dizininde — kişisel veri, hiçbir yere gönderilmez):
@@ -22,6 +22,8 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 export const MESAJ = '🚫 Bu videoyu izleme izniniz yoktur';
+/** 2. kademede (YouTube kapatıldıktan sonra) ekranın ortasında — kullanıcının metni, 18.10.2026. */
+export const UYARI = ['⚠️ Eğer aynı videoyu tekrar açmaya çalışırsanız', 'televizyonu tamamen kapatabilirim ve erişiminiz tam olarak gider.'];
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const EN_COK_KURAL = 500;
@@ -193,7 +195,8 @@ export class EngelHata extends Error {
 
 /**
  * Bekçi: her `aralikMs`'de Apple TV'si olan, açık ve Apple TV girişindeki TV'lere "ne oynuyor" diye sorar.
- * TV nesnesinden beklenen: `appledaOynayan()` (TV kapalı/başka girişte → null), `appleKomut(tus)`, `bildirimGoster`.
+ * TV nesnesinden beklenen: `appledaOynayan()` (TV kapalı/başka girişte → null), `appleKomut(tus)`, `bildirimGoster`,
+ * `appleUygulamaKapat()`, `uyariGoster(satirlar, ms)`.
  */
 export class EngelBekcisi {
   constructor({ tvler, liste, youtube = null, aralikMs = 4000, bekle = (ms) => new Promise((r) => setTimeout(r, ms)), simdi = Date.now, log = () => {} }) {
@@ -251,6 +254,8 @@ export class EngelBekcisi {
     } else {
       await this.bekle(1500);                        // mesaj görünsün
       await tv.appleUygulamaKapat().catch((e) => this.log(`[engel] YouTube kapatılamadı: ${e.message}`));
+      await this.bekle(1000);
+      await tv.uyariGoster(UYARI, 10000).catch(() => {});   // pencere 10 sn ekranda kalır
     }
     await this.liste.olayEkle({ tv: tv.id, baslik: o.baslik, kanal: o.sanatci || null, kural: { id: kural.id, tur: kural.tur, deger: kural.deger }, seviye });
     // Duraklatma tuşu kaçtıysa (hâlâ aynı video oynuyorsa) bir kez daha duraklat — kademe artmaz.
