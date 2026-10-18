@@ -321,8 +321,9 @@ export class Tv {
       if (!appleda) this.appleSon = null;
       const kaynak = on.appId === CANLI_TV ? 'canli' : (appleda ? (this.appleSon || 'apple') : (LG_KAYNAK[on.appId] || 'diger'));
       const cihaz = appleda ? 'apple' : 'lg';
+      const oynayan = appleda ? await this.appleOynayan() : null;
       const ekranKapali = guc ? guc.state === 'Screen Off' : null;
-      return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kaynak, cihaz, appleTv: this.appleTvVar(), kanal, ekranKapali };
+      return { id: this.id, ad: this.ad, acik: true, uygulama: on.appId || null, uygulamaAdi: adlar.get(on.appId) || null, kaynak, cihaz, appleTv: this.appleTvVar(), ...(oynayan ? { oynayan } : {}), kanal, ekranKapali };
     } catch (e) {
       if (!this._baglaniyor) this.birak();
       return { id: this.id, ad: this.ad, acik: false, acilabilir: !!this.mac, sebep: String(e.message || e).split('\n')[0].slice(0, 120) };
@@ -465,6 +466,23 @@ export class Tv {
     }
     await this.iste('ssap://system.launcher/launch', { id: uygulama });
     return { kaynak: hedef, uygulama, ...(UYGULAMALAR[hedef] ? { cihaz: 'lg' } : {}), ...(not ? { not } : {}) };
+  }
+
+  /**
+   * Apple TV'de şu an oynayan (uygulama, başlık, kanal/sanatçı, dizi-sezon-bölüm, konum). AirPlay eşleşmesi
+   * gerekir. Yalnız TV Apple TV girişindeyken sorulur — her soru Apple TV'yi uyandırır. 10 sn önbellek.
+   */
+  async appleOynayan() {
+    if (!this.appleTvVar()) return null;
+    const simdi = Date.now();
+    if (this._oynayan && simdi - this._oynayan.zaman < 10000) return this._oynayan.veri;
+    let veri = null;
+    try {
+      const { no, ok, ...v } = await this.atv.iste(this.appletv, 'oynayan', {}, 6000);
+      veri = v;
+    } catch { /* eşleşme yok ya da Apple TV yanıt vermedi */ }
+    this._oynayan = { zaman: simdi, veri };
+    return veri;
   }
 
   appleTvVar() {
@@ -727,7 +745,7 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
           sonuc = await zamanlayici.geriDon({ tv: t.id, dk: g.dk, kanal });
         } else if (islem === 'ekle') {
           const t = tvAl(g.tv);
-          sonuc = await zamanlayici.ekle({ tv: t.id, kanal: g.kanal, zaman: g.zaman, tvKapaliysa: g.tvKapaliysa, etiket: g.etiket ?? null });
+          sonuc = await zamanlayici.ekle({ tv: t.id, kanal: g.kanal, mesaj: g.mesaj ?? null, zaman: g.zaman, tvKapaliysa: g.tvKapaliysa, etiket: g.etiket ?? null });
         } else if (islem === 'uzat') sonuc = await zamanlayici.uzat(g.id, g.dk ?? 1);
         else if (islem === 'sil') sonuc = await zamanlayici.sil(g.id);
         else if (islem === 'etkin') sonuc = await zamanlayici.etkin(g.id, g.acik);
@@ -882,6 +900,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     calistir: async (g) => {
       const t = tvBul(g.tv);
       if (!t) return { sonuc: 'hata', neden: 'bilinmeyen TV' };
+      if (g.mesaj) {   // ekranda mesaj (ör. her gün 22:00 uyku saati) — TV kapalıysa atla, asla açma
+        if (!(await t.hazirMi())) return { sonuc: 'atlandi', neden: 'TV kapalıydı' };
+        await t.bildirimGoster(g.mesaj.metin, g.mesaj.sureSn);
+        return { sonuc: 'ok', neden: 'mesaj gösterildi' };
+      }
       if (g.tvKapaliysa === 'atla' && !(await t.hazirMi())) return { sonuc: 'atlandi', neden: 'TV kapalıydı' };
       const hedef = g.kanal.no != null ? { no: g.kanal.no } : { ad: g.kanal.ad };
       const k = await t.sirayla(() => t.kanalAc({ ...hedef, dogrula: true }));
@@ -891,6 +914,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     uyar: async (g, sn) => {
       const t = tvBul(g.tv);
       if (!t || !(await t.hazirMi())) return;
+      if (g.mesaj) return;
       const ne = g.kanal.ad || `Kanal ${g.kanal.no}`;
       await t.toast(`${sn >= 60 ? `${Math.round(sn / 60)} dk` : `${sn} sn`} sonra ${ne} açılacak${g.tur === 'geri-don' ? ' (geri dön)' : ''}`);
     },

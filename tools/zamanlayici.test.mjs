@@ -198,3 +198,20 @@ test('program: "X dk sonra" dakikası dakikasına kurulur, bir kez çalışır; 
   }
   z.durdur();
 });
+
+test('mesaj görevi: her gün belirli saatte TV ekranına mesaj; TV kapalıysa atlanır (açmaz), ön uyarı yok', async () => {
+  const { z, calisan, uyarilar, ilerle } = kur();   // 17.10.2026 20:00
+  const g = await z.ekle({ tv: 'tv1', mesaj: { metin: 'İyi uykular 😴', sureSn: 15 }, zaman: { tur: 'haftalik', saat: '22:00', gunler: [1, 2, 3, 4, 5, 6, 7] }, tvKapaliysa: 'ac' });
+  assert.equal(g.tvKapaliysa, 'atla', 'mesaj görevi TV açmaz');
+  assert.equal(g.kanal, null);
+  assert.deepEqual(g.mesaj, { metin: 'İyi uykular 😴', sureSn: 15 });
+  assert.equal(g.an, tr(2026, 10, 17, 22, 0));
+  await ilerle(2 * 3600e3);
+  assert.equal(calisan.length, 1);
+  assert.equal(calisan[0].mesaj.metin, 'İyi uykular 😴');
+  assert.deepEqual(uyarilar, [], 'ön uyarı gösterilmez');
+  assert.equal(z.liste().gorevler[0].an, tr(2026, 10, 18, 22, 0), 'ertesi güne kurulur');
+  await assert.rejects(z.ekle({ tv: 'tv1', mesaj: { metin: '' }, zaman: { tur: 'haftalik', saat: '22:00', gunler: [1] } }), (e) => e.kod === 400);
+  await assert.rejects(z.ekle({ tv: 'tv1', mesaj: { metin: 'x', sureSn: 500 }, zaman: { tur: 'haftalik', saat: '22:00', gunler: [1] } }), (e) => e.kod === 400);
+  z.durdur();
+});

@@ -144,31 +144,45 @@ export class Zamanlayici {
     return g;
   }
 
-  /** Program görevi: bir kez (tarih + saat ya da X dk sonra) ya da haftalık (günler + saat). */
-  async ekle({ tv, kanal, zaman, tvKapaliysa = 'ac', etiket = null }) {
-    if (!kanal || typeof kanal !== 'string' || kanal.length > 60) throw new ZamanlayiciHata(400, 'kanal adı gerekli');
+  /**
+   * Program görevi: bir kez (tarih + saat ya da X dk sonra) ya da haftalık (günler + saat).
+   * Görev ya bir KANALA geçer ya da TV ekranında bir MESAJ gösterir (`mesaj: { metin, sureSn }`, ör. her gün
+   * 22:00 "uyku saati" — kullanıcı, 18.10.2026). Mesaj görevi TV kapalıysa her zaman atlanır (TV'yi açmaz)
+   * ve ön uyarı göstermez.
+   */
+  async ekle({ tv, kanal, mesaj = null, zaman, tvKapaliysa = 'ac', etiket = null }) {
+    let mesajKaydi = null;
+    if (mesaj != null) {
+      const metin = typeof mesaj.metin === 'string' ? mesaj.metin.trim() : '';
+      const sureSn = Number(mesaj.sureSn ?? 15);
+      if (!metin || metin.length > 160) throw new ZamanlayiciHata(400, 'mesaj 1-160 karakter olmalı');
+      if (!Number.isInteger(sureSn) || sureSn < 5 || sureSn > 120) throw new ZamanlayiciHata(400, 'mesaj süresi 5-120 sn olmalı');
+      mesajKaydi = { metin, sureSn };
+      tvKapaliysa = 'atla';
+    } else if (!kanal || typeof kanal !== 'string' || kanal.length > 60) throw new ZamanlayiciHata(400, 'kanal adı gerekli');
     if (etiket != null && (typeof etiket !== 'string' || etiket.length > 80)) throw new ZamanlayiciHata(400, 'etiket en çok 80 karakter');
     if (!['ac', 'atla'].includes(tvKapaliysa)) throw new ZamanlayiciHata(400, 'TV kapalıysa: ac ya da atla');
     if ([...this.gorevler.values()].filter((g) => g.tur !== 'geri-don').length >= EN_FAZLA_GOREV) {
       throw new ZamanlayiciHata(409, `en fazla ${EN_FAZLA_GOREV} program görevi`);
     }
     const simdi = this.simdi();
+    const hedef = mesajKaydi ? { kanal: null, mesaj: mesajKaydi } : { kanal: { ad: kanal } };
     let g;
     if (zaman?.tur === 'sonra') {
       // "X dk sonra şu kanala git" (kanala basılı tutunca, kullanıcı 17.10.2026): dakikası dakikasına,
       // saate yuvarlanmadan. Bir kez çalışan görevdir (tür "tek" olarak saklanır).
       const dk = Number(zaman.dk);
       if (!Number.isInteger(dk) || dk < 1 || dk > 720) throw new ZamanlayiciHata(400, 'süre 1-720 dk olmalı');
-      g = this._yeni({ tur: 'tek', tv, kanal: { ad: kanal }, an: simdi + dk * 60000, tvKapaliysa, ...(etiket ? { etiket } : {}) });
+      g = this._yeni({ tur: 'tek', tv, ...hedef, an: simdi + dk * 60000, tvKapaliysa, ...(etiket ? { etiket } : {}) });
     } else if (zaman?.tur === 'tek') {
       const an = trAn(zaman.tarih, zaman.saat);
       if (an <= simdi) throw new ZamanlayiciHata(400, 'bu an geçmişte');
-      g = this._yeni({ tur: 'tek', tv, kanal: { ad: kanal }, an, tvKapaliysa, ...(etiket ? { etiket } : {}) });
+      g = this._yeni({ tur: 'tek', tv, ...hedef, an, tvKapaliysa, ...(etiket ? { etiket } : {}) });
     } else if (zaman?.tur === 'haftalik') {
       const gunler = [...new Set((zaman.gunler || []).map(Number))].filter((x) => Number.isInteger(x) && x >= 1 && x <= 7).sort();
       if (!gunler.length) throw new ZamanlayiciHata(400, 'en az bir gün seçilmeli');
       if (!SAAT.test(String(zaman.saat || ''))) throw new ZamanlayiciHata(400, 'saat SS:DD olmalı');
-      g = this._yeni({ tur: 'haftalik', tv, kanal: { ad: kanal }, saat: zaman.saat, gunler, an: sonrakiHaftalik(zaman.saat, gunler, simdi), tvKapaliysa, ...(etiket ? { etiket } : {}) });
+      g = this._yeni({ tur: 'haftalik', tv, ...hedef, saat: zaman.saat, gunler, an: sonrakiHaftalik(zaman.saat, gunler, simdi), tvKapaliysa, ...(etiket ? { etiket } : {}) });
     } else {
       throw new ZamanlayiciHata(400, 'zaman türü tek, sonra ya da haftalik olmalı');
     }
@@ -251,7 +265,7 @@ export class Zamanlayici {
     const t = setTimeout(() => this._vade(g), Math.min(kalan, EN_UZUN_BEKLEME));
     t.unref?.();
     this.saatler.set(g.id, t);
-    if (!this.uyarFn) return;
+    if (!this.uyarFn || g.mesaj) return;   // mesaj görevinin kendisi zaten ekranda bir uyarı
     const an = g.an;
     const uyarilar = [];
     for (const sn of UYARI_SN) {
@@ -319,12 +333,12 @@ export class Zamanlayici {
   }
 
   _gecmiseYaz(g, sonuc) {
-    this.gecmis.push({ id: g.id, tur: g.tur, tv: g.tv, kanal: g.kanal, etiket: g.etiket || null, an: g.an, bitti: this.simdi(), sonuc: sonuc.sonuc, neden: sonuc.neden || null });
+    this.gecmis.push({ id: g.id, tur: g.tur, tv: g.tv, kanal: g.kanal, ...(g.mesaj ? { mesaj: g.mesaj } : {}), etiket: g.etiket || null, an: g.an, bitti: this.simdi(), sonuc: sonuc.sonuc, neden: sonuc.neden || null });
     if (this.gecmis.length > GECMIS_EN_FAZLA) this.gecmis.splice(0, this.gecmis.length - GECMIS_EN_FAZLA);
   }
 
   _tarif(g) {
-    const k = g.kanal.ad || g.kanal.no;
+    const k = g.mesaj ? `mesaj "${g.mesaj.metin.slice(0, 30)}"` : (g.kanal.ad || g.kanal.no);
     return g.tur === 'geri-don' ? `geri dön → ${k}` : `${g.tur === 'tek' ? 'bir kez' : 'haftalık'} → ${k}`;
   }
 }

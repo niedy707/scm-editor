@@ -107,3 +107,14 @@ test('saklama: 365 günden eski gün dosyaları silinir', async () => {
   assert.equal(kalan.length, 1);
   k.temizle();
 });
+
+test('Apple TV: oynayan içerik kesite uygulama + başlık (kanal) olarak girer; dizi bölümüyle yazılır', () => {
+  const yt = kesitAnahtari({ acik: true, kaynak: 'apple', uygulamaAdi: 'HDMI 2', oynayan: { uygulama: 'YouTube', baslik: 'Bir Video', sanatci: 'Bir Kanal', durum: 'playing' } });
+  assert.equal(yt.uygulama, 'YouTube');
+  assert.equal(yt.program, 'Bir Video (Bir Kanal)');
+  const nf = kesitAnahtari({ acik: true, kaynak: 'apple', oynayan: { uygulama: 'Netflix', dizi: 'Bir Dizi', sezon: 2, bolum: 5, baslik: 'Bölüm Adı' } });
+  assert.equal(nf.program, 'Bir Dizi S2B5 — Bölüm Adı');
+  const bos = kesitAnahtari({ acik: true, kaynak: 'apple', uygulamaAdi: 'HDMI 2', oynayan: { uygulama: 'YouTube', durum: 'idle' } });
+  assert.equal(bos.program, null);
+  assert.equal(bos.uygulama, 'YouTube');
+});

@@ -25,13 +25,17 @@ export const trGun = (ms) => new Date(ms + TR).toISOString().slice(0, 10);
 export function kesitAnahtari(d) {
   if (!d || !d.acik) return null;
   const kanal = d.kaynak === 'canli' && d.kanal ? { no: d.kanal.no ?? null, ad: d.kanal.ad ?? null } : null;
-  return {
-    kaynak: d.kaynak || 'diger',
-    kanal,
-    program: kanal && d.kanal.program ? d.kanal.program.ad || null : null,
-    uygulama: d.kaynak === 'canli' ? null : (d.uygulamaAdi || d.uygulama || null),
-    ekranKapali: !!d.ekranKapali,
-  };
+  let program = kanal && d.kanal.program ? d.kanal.program.ad || null : null;
+  let uygulama = d.kaynak === 'canli' ? null : (d.uygulamaAdi || d.uygulama || null);
+  // Apple TV'de oynayan (AirPlay): uygulama adı (YouTube…) ve içerik — "Dizi S2B5 — Bölüm adı" ya da "Video (Kanal)".
+  const o = d.kaynak !== 'canli' ? d.oynayan : null;
+  if (o) {
+    uygulama = o.uygulama || uygulama;
+    const dizi = o.dizi ? `${o.dizi}${o.sezon ? ` S${o.sezon}` : ''}${o.bolum ? `B${o.bolum}` : ''}` : null;
+    const ad = [dizi, o.baslik].filter(Boolean).join(' — ');
+    program = ad ? `${ad}${o.sanatci && !o.dizi ? ` (${o.sanatci})` : ''}` : null;
+  }
+  return { kaynak: d.kaynak || 'diger', kanal, program, uygulama, ekranKapali: !!d.ekranKapali };
 }
 const ayni = (a, b) => !!a && !!b && a.kaynak === b.kaynak && a.program === b.program && a.uygulama === b.uygulama
   && a.ekranKapali === b.ekranKapali && (a.kanal?.no ?? null) === (b.kanal?.no ?? null);

@@ -6,7 +6,7 @@ her komutta `atvremote` ile çalıştırmak Pi 3'te ~3,5 sn sürüyor (ölçüld
 açık tutar: ajan satır başına bir JSON istek yazar, yardımcı satır başına bir JSON yanıt döner.
 
 İstek:  {"no": 7, "cihaz": {"ip": "...", "id": "..."}, "is": "uygulama", "uygulama": "com.netflix.Netflix"}
-        is: "uygulama" (uygulama) · "tus" (tus) · "metin" (metin) · "uygulamalar"
+        is: "uygulama" (uygulama) · "tus" (tus) · "metin" (metin) · "uygulamalar" · "oynayan"
 Yanıt:  {"no": 7, "ok": true, ...}  ya da  {"no": 7, "ok": false, "hata": "..."}
 
 Kimlik bilgileri pyatv'nin dosya deposunda (argv[1]); eşleştirme bir kez `atvremote ... pair` ile yapılır.
@@ -110,6 +110,20 @@ class Yardimci:
                 raise Hata("metin en çok 100 karakter")
             await atv.keyboard.text_set(metin)
             return {}
+        if is_ == "oynayan":
+            # "Şu an ne oynuyor" (AirPlay/MRP eşleştirmesi gerekir; yoksa NotSupported → hata döner)
+            p = await atv.metadata.playing()
+            try:
+                app = atv.metadata.app
+            except Exception:  # noqa: BLE001 — uygulama bilgisi her cihazda yok
+                app = None
+            ad = lambda e: e.name.lower() if e is not None else None  # noqa: E731
+            return {
+                "uygulama": app.name if app else None, "uygulamaId": app.identifier if app else None,
+                "baslik": p.title or None, "sanatci": p.artist or None, "album": p.album or None,
+                "dizi": p.series_name or None, "sezon": p.season_number, "bolum": p.episode_number,
+                "durum": ad(p.device_state), "tur": ad(p.media_type), "konum": p.position, "sure": p.total_time,
+            }
         if is_ == "uygulamalar":
             return {"uygulamalar": [{"ad": a.name, "id": a.identifier} for a in await atv.apps.app_list()]}
         raise Hata(f"bilinmeyen iş: {is_}")
