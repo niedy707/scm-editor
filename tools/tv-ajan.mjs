@@ -215,7 +215,7 @@ export class Tv {
     this.netflix = appletv && ekranOku ? new NetflixOkuyucu({ ekranAl: () => this.sirayla(() => this.ekran()), oku: ekranOku, log }) : null;
     this.hareketOlc = appletv ? hareketOlc : null;   // (jpegA, jpegB) → fark; bilgi vermeyen uygulama için
     this._bilgisiz = null;
-    this.hareketAraMs = 1500;   // iki ekran görüntüsü arası
+    this.hareketAraMs = 5000;   // iki ekran görüntüsü arası (kullanıcı, 18.10.2026: 5 sn)
     this.appleSon = null;            // Apple TV'de en son açtırılan uygulama (netflix…), girişten çıkınca silinir
     this.anahtar = anahtar;
     this.rehber = rehber;
@@ -553,8 +553,9 @@ export class Tv {
   /**
    * Oynatma bilgisi YAYINLAMAYAN uygulama (Flex IPTV — ölçüldü 18.10.2026: durum idle, başlık yok ve uygulama en son
    * bilgi veren uygulama, ör. YouTube olarak KALIYOR). Apple TV "oynuyor" demiyorsa ve uyanıksa (ekran koruyucu
-   * değil — onun manzaraları da hareketli) TV ekranında hareket var mı bakılır; varsa oynayan BILGISIZ_UYGULAMA sayılır.
-   * Ölçüm en çok 60 sn'de bir, arka planda (durum sorgusu beklemez); karar 90 sn geçerli.
+   * değil — onun manzaraları da hareketli) 5 sn arayla iki ekran görüntüsü karşılaştırılır: farklıysa oynayan
+   * BILGISIZ_UYGULAMA sayılır (aktif); aynıysa ya da ekran koruyucudaysa TV açık ama izlenmiyor (pasif). Ölçüm ilk
+   * gerektiğinde hemen, sonra en çok 60 sn'de bir, arka planda (durum sorgusu beklemez); karar 90 sn geçerli.
    */
   _bilgisizIsle(v) {
     if (!this.hareketOlc || !this.appleTvVar()) return v;
