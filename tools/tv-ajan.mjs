@@ -818,6 +818,9 @@ export async function youtubeEkle(kesitler, youtube, butceMs = 6000) {
   }
 }
 
+/** İşlem kaydı için isteğin kaynağı: panel (kumanda arayüzü, `X-Istemci: panel`) ya da dogrudan (betik/komut). */
+const istemci = (req) => (req.headers['x-istemci'] === 'panel' ? 'panel' : 'dogrudan');
+
 export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null, youtube = null, engel = null, kilit = null } = {}) {
   const byId = new Map(tvler.map((t) => [t.id, t]));
   const tvAl = (id) => {
@@ -930,14 +933,14 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         if (req.method === 'POST') {
           const g = await govdeOku(req);
           const t = tvAl(g.tv);
-          await kilit.kilitle(t.id, g.dk ?? null, g.kapsam || (t.appletv ? 'tv+apple' : 'tv'));
+          await kilit.kilitle(t.id, g.dk ?? null, g.kapsam || (t.appletv ? 'tv+apple' : 'tv'), istemci(req));
           log(`[kilit] ${t.id} kilitlendi (${g.dk ? `${g.dk} dk` : 'süresiz'})`);
           json(res, 200, { ok: true, ...kilitYaniti() });
           return;
         }
         if (req.method === 'DELETE') {
           const t = tvAl(url.searchParams.get('tv'));
-          await kilit.ac(t.id);
+          await kilit.ac(t.id, istemci(req));
           log(`[kilit] ${t.id} kilidi açıldı`);
           json(res, 200, { ok: true, ...kilitYaniti() });
           return;
@@ -949,15 +952,15 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         if (!engel) throw new HttpHata(503, 'engelleme kurulu değil (Apple TV yok ya da izleme kapalı)');
         if (req.method === 'GET' && url.pathname === '/engel') { json(res, 200, engel.durum()); return; }
         if (req.method === 'DELETE' && url.pathname === '/engel') {
-          await engel.sil(String(url.searchParams.get('id') || ''));
+          await engel.sil(String(url.searchParams.get('id') || ''), istemci(req));
           log('[engel] kural silindi');
           json(res, 200, { ok: true, ...engel.durum() });
           return;
         }
         if (req.method === 'POST') {
           const g = await govdeOku(req);
-          if (url.pathname === '/engel/ayar') { json(res, 200, { ok: true, ...(await engel.ayarla({ acik: g.acik })) }); return; }
-          const { kural, varmis } = await engel.ekle({ metin: g.metin, tur: g.tur || null });
+          if (url.pathname === '/engel/ayar') { json(res, 200, { ok: true, ...(await engel.ayarla({ acik: g.acik }, istemci(req))) }); return; }
+          const { kural, varmis } = await engel.ekle({ metin: g.metin, tur: g.tur || null }, istemci(req));
           log(`[engel] kural ${varmis ? 'zaten vardı' : 'eklendi'}: ${kural.tur}`);
           json(res, varmis ? 200 : 201, { ok: true, kural, varmis, ...engel.durum() });
           return;

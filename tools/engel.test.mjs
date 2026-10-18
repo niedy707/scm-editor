@@ -143,3 +143,15 @@ test('kanal adı ayıklama: og:title yedeği', () => {
   assert.equal(kanalAdiAyikla('<meta property="og:title" content="A &amp; B">'), 'A & B');
   assert.equal(kanalAdiAyikla('<html></html>'), null);
 });
+
+test('işlem kaydı: kural eklendi / silindi, engelleme açıldı / kapatıldı — kaynakla', async () => {
+  const { l, temizle } = liste();
+  const { kural } = await l.ekle({ metin: 'oyun' }, 'panel');
+  await l.ayarla({ acik: false }, 'panel');
+  await l.ayarla({ acik: true }, 'dogrudan');
+  await l.sil(kural.id, 'panel');
+  assert.deepEqual(l.durum().islemler.map((i) => [i.ne, i.deger ?? null, i.kaynak]), [
+    ['silindi', 'oyun', 'panel'], ['acildi', null, 'dogrudan'], ['kapatildi', null, 'panel'], ['eklendi', 'oyun', 'panel'],
+  ]);
+  temizle();
+});

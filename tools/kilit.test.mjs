@@ -89,3 +89,17 @@ test('kilitli TV: açma (uyan), Apple TV tuşu ve metni 423 ile reddedilir — T
   await assert.rejects(tv.appleMetin('a'), (e) => e.kod === 423);
   assert.equal(wol, 0);
 });
+
+test('olay kaydı: kilitlendi / açıldı (kaynakla) ve süresi doldu yazılır; kilit yokken açmak kayıt üretmez', async () => {
+  const { k, saat, temizle } = kur();
+  await k.kilitle('tv1', 30, 'tv', 'panel');
+  await k.ac('tv1', 'panel');
+  await k.ac('tv1', 'panel');
+  await k.kilitle('tv2', 1, 'tv+apple', 'dogrudan');
+  saat.t += 2 * 60000;
+  assert.equal(k.bilgi('tv2'), null);
+  assert.deepEqual(k.durum().olaylar.map((o) => [o.tv, o.ne, o.kaynak ?? null]), [
+    ['tv2', 'suresi-doldu', null], ['tv2', 'kilitlendi', 'dogrudan'], ['tv1', 'acildi', 'panel'], ['tv1', 'kilitlendi', 'panel'],
+  ]);
+  temizle();
+});

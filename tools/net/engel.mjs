@@ -14,6 +14,9 @@
  *   kelime — başlıkta ya da kanal adında bir sözcüğün BAŞINDA geçerse ("oyun" → "Oyunları" tutar, "at" → "kat"
  *            tutmaz). Büyük/küçük harf, Türkçe harf ve aksan farkı gözetilmez.
  *
+ * İşlem kaydı (`islemler`): kural eklendi / silindi, engelleme açıldı / kapatıldı — kaynak: panel ya da dogrudan
+ * (kullanıcı 18.10.2026: "bu işlemleri de loglayabilirsin, her seferinde bana sorma").
+ *
  * Bekçi yalnız TV açık ve Apple TV girişindeyken Apple TV'ye sorar (soru Apple TV'yi, o da CEC ile TV'yi
  * uyandırabilir — gece kapalı TV'yi açmamak için). Kural yoksa ya da engelleme kapalıysa hiç sormaz.
  */
@@ -69,27 +72,37 @@ export function kanalAdiAyikla(html) {
 export class EngelListesi {
   constructor({ dizin, getir = fetch, simdi = Date.now, log = () => {} }) {
     Object.assign(this, { dosya: join(dizin, 'engeller.json'), getir, simdi, log });
-    this.veri = { acik: true, kurallar: [], olaylar: [] };
+    this.veri = { acik: true, kurallar: [], olaylar: [], islemler: [] };
     this.yaziliyor = Promise.resolve();
   }
 
   async yukle() {
     try {
       const j = JSON.parse(await readFile(this.dosya, 'utf8'));
-      this.veri = { acik: j.acik !== false, kurallar: Array.isArray(j.kurallar) ? j.kurallar : [], olaylar: Array.isArray(j.olaylar) ? j.olaylar : [] };
+      this.veri = { acik: j.acik !== false, kurallar: Array.isArray(j.kurallar) ? j.kurallar : [], olaylar: Array.isArray(j.olaylar) ? j.olaylar : [], islemler: Array.isArray(j.islemler) ? j.islemler : [] };
     } catch { /* yok — boş liste */ }
   }
 
   etkinMi() { return this.veri.acik && this.veri.kurallar.length > 0; }
-  durum() { return { acik: this.veri.acik, kurallar: this.veri.kurallar, olaylar: this.veri.olaylar.slice(-50).reverse() }; }
+  durum() { return { acik: this.veri.acik, kurallar: this.veri.kurallar, olaylar: this.veri.olaylar.slice(-50).reverse(), islemler: this.veri.islemler.slice(-50).reverse() }; }
 
-  async ayarla({ acik }) { this.veri.acik = !!acik; await this._kaydet(); return this.durum(); }
+  _islem(kayit) {
+    this.veri.islemler.push({ id: randomUUID().slice(0, 8), zaman: this.simdi(), ...kayit });
+    if (this.veri.islemler.length > EN_COK_OLAY) this.veri.islemler = this.veri.islemler.slice(-EN_COK_OLAY);
+  }
+
+  async ayarla({ acik }, kaynak = null) {
+    this.veri.acik = !!acik;
+    this._islem({ ne: this.veri.acik ? 'acildi' : 'kapatildi', ...(kaynak ? { kaynak } : {}) });
+    await this._kaydet();
+    return this.durum();
+  }
 
   /**
    * Kural ekler. `tur` verilmezse: video/kanal linki kendisi belirler, düz metin anahtar kelimedir;
    * düz metni kanal adı olarak eklemek için tur: 'kanal'.
    */
-  async ekle({ metin, tur = null }) {
+  async ekle({ metin, tur = null }, kaynak = null) {
     const s = String(metin || '').trim();
     if (!s || s.length > 300) throw new EngelHata(400, 'link, kanal adı ya da kelime gerekli (en çok 300 karakter)');
     if (tur && !['video', 'kanal', 'kelime'].includes(tur)) throw new EngelHata(400, 'tür video, kanal ya da kelime olmalı');
@@ -116,14 +129,16 @@ export class EngelListesi {
     if (ayni) return { kural: ayni, varmis: true };
     kural = { id: randomUUID().slice(0, 8), ...kural, eklendi: this.simdi() };
     this.veri.kurallar.push(kural);
+    this._islem({ ne: 'eklendi', tur: kural.tur, deger: kural.tur === 'video' ? (kural.baslik || kural.videoId) : kural.deger, ...(kaynak ? { kaynak } : {}) });
     await this._kaydet();
     return { kural, varmis: false };
   }
 
-  async sil(id) {
-    const once = this.veri.kurallar.length;
-    this.veri.kurallar = this.veri.kurallar.filter((r) => r.id !== id);
-    if (this.veri.kurallar.length === once) throw new EngelHata(404, 'kural yok');
+  async sil(id, kaynak = null) {
+    const r = this.veri.kurallar.find((x) => x.id === id);
+    if (!r) throw new EngelHata(404, 'kural yok');
+    this.veri.kurallar = this.veri.kurallar.filter((x) => x.id !== id);
+    this._islem({ ne: 'silindi', tur: r.tur, deger: r.tur === 'video' ? (r.baslik || r.videoId) : r.deger, ...(kaynak ? { kaynak } : {}) });
     await this._kaydet();
   }
 

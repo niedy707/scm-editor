@@ -6,6 +6,8 @@
  *    olay olarak kaydedilir (panel telefona bildirir).
  * Kilit süreli (`bitis`, ms) ya da süresiz (`bitis: null`); süre dolunca kendiliğinden kalkar.
  * Mesaj satırları `mesaj` ayarında (kişisel imza vb. koda değil ajanın durum dizinine yazılır).
+ * Olay kaydı (`olaylar`): kilitlendi / acildi / suresi-doldu (kaynak: panel ya da dogrudan) ve kapatildi (kilitli TV
+ * açılıp kapatıldı). Kullanıcı 18.10.2026: "bu işlemleri de loglayabilirsin, her seferinde bana sorma".
  * Kayıt <dizin>/kilit.json — ajanın durum dizininde, kişisel veri.
  */
 import { readFile, writeFile, rename } from 'node:fs/promises';
@@ -42,6 +44,7 @@ export class TvKilidi {
     if (k.bitis != null && k.bitis <= this.simdi()) {
       delete this.veri.kilitler[tvId];
       this.log(`[kilit] ${tvId}: süre doldu, kilit kalktı`);
+      this.veri.olaylar.push({ id: randomUUID().slice(0, 8), zaman: this.simdi(), tv: tvId, ne: 'suresi-doldu' });
       this._kaydet();
       return null;
     }
@@ -70,18 +73,20 @@ export class TvKilidi {
    * `dk` null → süresiz; aksi halde 1 dk – 30 gün. `kapsam`: 'tv' (yalnız TV kapatılır) ya da 'tv+apple'
    * (kapatmadan önce Apple TV de uyutulur — Apple TV'nin kumandası TV'yi CEC ile yeniden açamasın).
    */
-  async kilitle(tvId, dk = null, kapsam = 'tv+apple') {
+  async kilitle(tvId, dk = null, kapsam = 'tv+apple', kaynak = null) {
     if (dk != null && !(Number.isInteger(dk) && dk >= 1 && dk <= EN_COK_DK)) throw new KilitHata(400, `süre 1 dk – ${EN_COK_DK / 1440} gün ya da süresiz olmalı`);
     if (!KAPSAMLAR.has(kapsam)) throw new KilitHata(400, 'kapsam tv ya da tv+apple olmalı');
     const zaman = this.simdi();
     this.veri.kilitler[tvId] = { bitis: dk == null ? null : zaman + dk * 60000, zaman, kapsam };
-    await this._kaydet();
+    await this.olayEkle({ tv: tvId, ne: 'kilitlendi', dk, kapsam, ...(kaynak ? { kaynak } : {}) });
     return this.veri.kilitler[tvId];
   }
 
-  async ac(tvId) {
+  async ac(tvId, kaynak = null) {
+    const vardi = !!this.veri.kilitler[tvId];
     delete this.veri.kilitler[tvId];
-    await this._kaydet();
+    if (vardi) await this.olayEkle({ tv: tvId, ne: 'acildi', ...(kaynak ? { kaynak } : {}) });
+    else await this._kaydet();
   }
 
   async olayEkle(olay) {
