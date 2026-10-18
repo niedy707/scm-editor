@@ -537,6 +537,12 @@ export class Tv {
     return this.appleOynayan();
   }
 
+  /** Apple TV'de öndeki uygulamayı kapatır (YouTube engeli, 3. kademe). */
+  async appleUygulamaKapat() {
+    if (!this.appleTvVar()) throw new HttpHata(409, `${this.ad}: Apple TV bağlı değil`);
+    await this.atv.iste(this.appletv, 'uygulama-kapat', {}, 15000);
+  }
+
   /** Apple TV'yi uyutur (kilit bekçisi, kapsam "TV + Apple TV"). */
   async appleUyut() {
     if (!this.appleTvVar()) return;

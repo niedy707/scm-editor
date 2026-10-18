@@ -1,6 +1,9 @@
 /**
  * YouTube engelleri (ebeveyn denetimi) — listedeki bir video, kanal ya da anahtar kelime Apple TV'deki YouTube'da
- * OYNAMAYA başlayınca: oynatma durdurulur, TV'de "Bu videoyu izleme izniniz yoktur" yazar, oynatıcıdan geri çıkılır.
+ * OYNAMAYA başlayınca TV'de "Bu videoyu izleme izniniz yoktur" yazar ve kademeli durdurulur (kullanıcı, 18.10.2026):
+ *   1. oynatma → duraklat · 2. yine oynatılırsa → duraklat + oynatıcıdan çık (geri ×2; tek "geri" yalnız oynatıcı
+ *   düğmelerini gizliyor — ölçüldü) · 3. yine oynatılırsa → YouTube uygulamasını kapat.
+ * Kademe aynı video 10 dk içinde yeniden oynatıldıkça artar; başka video ya da 10 dk sessizlik sayacı sıfırlar.
  *
  * Kurallar (`<dizin>/engeller.json`, ajanın durum dizininde — kişisel veri, hiçbir yere gönderilmez):
  *   video  — link verilir (youtube.com/watch?v=, youtu.be/, /shorts/, /live/); başlık+kanal oEmbed'den alınır.
@@ -23,6 +26,7 @@ const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const EN_COK_KURAL = 500;
 const EN_COK_OLAY = 200;
+const KADEME_MS = 10 * 60 * 1000;
 
 /** Karşılaştırma için katlama: Türkçe küçük harf, aksan/nokta yok (İ/I/ı/i → i, ş → s …), boşluk tek. */
 export const katla = (s) => String(s || '').normalize('NFKD').replace(/\p{M}/gu, '').toLocaleLowerCase('tr')
@@ -192,9 +196,10 @@ export class EngelHata extends Error {
  * TV nesnesinden beklenen: `appledaOynayan()` (TV kapalı/başka girişte → null), `appleKomut(tus)`, `bildirimGoster`.
  */
 export class EngelBekcisi {
-  constructor({ tvler, liste, youtube = null, aralikMs = 4000, bekle = (ms) => new Promise((r) => setTimeout(r, ms)), log = () => {} }) {
-    Object.assign(this, { tvler: tvler.filter((t) => t.appletv), liste, youtube, aralikMs, bekle, log });
+  constructor({ tvler, liste, youtube = null, aralikMs = 4000, bekle = (ms) => new Promise((r) => setTimeout(r, ms)), simdi = Date.now, log = () => {} }) {
+    Object.assign(this, { tvler: tvler.filter((t) => t.appletv), liste, youtube, aralikMs, bekle, simdi, log });
     this.mesgul = new Set();
+    this.kademe = new Map();   // tv → { anahtar, seviye, zaman }
     this.zamanlayici = null;
   }
 
@@ -219,28 +224,38 @@ export class EngelBekcisi {
     if (!videoId && this.youtube && this.liste.kimlikGerekli()) this.youtube.bul({ baslik: o.baslik, kanal: o.sanatci, sure: o.sure }).catch(() => {});
     const kural = this.liste.eslesen({ baslik: o.baslik, kanal: o.sanatci, videoId });
     if (!kural) return null;
+    const anahtar = `${o.baslik}\u0000${o.sanatci || ''}`;
+    const once = this.kademe.get(tv.id);
+    const simdi = this.simdi();
+    const seviye = once && once.anahtar === anahtar && simdi - once.zaman < KADEME_MS ? Math.min(once.seviye + 1, 3) : 1;
+    this.kademe.set(tv.id, { anahtar, seviye, zaman: simdi });
     this.mesgul.add(tv.id);
     try {
-      await this.uygula(tv, o, kural);
+      await this.uygula(tv, o, kural, seviye);
     } finally {
       this.mesgul.delete(tv.id);
     }
     return kural;
   }
 
-  async uygula(tv, o, kural) {
-    this.log(`[engel] ${tv.id}: "${o.baslik}" (${o.sanatci || '?'}) durduruldu — kural ${kural.tur}: ${kural.deger}`);
+  async uygula(tv, o, kural, seviye = 1) {
+    const ne = ['', 'duraklatıldı', 'duraklatılıp oynatıcıdan çıkıldı', 'YouTube kapatıldı'][seviye];
+    this.log(`[engel] ${tv.id}: "${o.baslik}" (${o.sanatci || '?'}) ${ne} — kural ${kural.tur}: ${kural.deger} (kademe ${seviye})`);
     await tv.appleKomut('pause').catch((e) => this.log(`[engel] durdurulamadı: ${e.message}`));
     tv.bildirimGoster(MESAJ, 8).catch(() => {});
-    await this.bekle(800);
-    await tv.appleKomut('menu').catch(() => {});   // oynatıcıdan çık
-    await this.liste.olayEkle({ tv: tv.id, baslik: o.baslik, kanal: o.sanatci || null, kural: { id: kural.id, tur: kural.tur, deger: kural.deger } });
-    // Hâlâ oynuyorsa (tuş kaçtı) bir kez daha.
+    if (seviye === 2) {
+      await this.bekle(800);
+      await tv.appleKomut('menu').catch(() => {});   // ilk "geri" oynatıcı düğmelerini gizler,
+      await this.bekle(700);
+      await tv.appleKomut('menu').catch(() => {});   // ikincisi oynatıcıdan çıkar
+    } else if (seviye >= 3) {
+      await this.bekle(1500);                        // mesaj görünsün
+      await tv.appleUygulamaKapat().catch((e) => this.log(`[engel] YouTube kapatılamadı: ${e.message}`));
+    }
+    await this.liste.olayEkle({ tv: tv.id, baslik: o.baslik, kanal: o.sanatci || null, kural: { id: kural.id, tur: kural.tur, deger: kural.deger }, seviye });
+    // Duraklatma tuşu kaçtıysa (hâlâ aynı video oynuyorsa) bir kez daha duraklat — kademe artmaz.
     await this.bekle(2500);
     const s = await tv.appledaOynayan().catch(() => null);
-    if (s && s.durum === 'playing' && s.baslik === o.baslik) {
-      await tv.appleKomut('pause').catch(() => {});
-      await tv.appleKomut('menu').catch(() => {});
-    }
+    if (s && s.durum === 'playing' && s.baslik === o.baslik && seviye < 3) await tv.appleKomut('pause').catch(() => {});
   }
 }

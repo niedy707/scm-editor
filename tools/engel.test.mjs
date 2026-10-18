@@ -87,20 +87,36 @@ function sahteTv(oynayanlar) {
   };
 }
 
-test('bekçi: kurala uyan video OYNARKEN durdurulur, mesaj gösterilir, geri çıkılır, olay kaydedilir', async () => {
+test('bekçi: kademeli — 1. duraklat, yine oynatılırsa 2. duraklat + geri ×2, yine oynatılırsa 3. YouTube kapat', async () => {
   const { l, temizle } = liste();
   await l.ekle({ metin: 'oyun' });
   const yt = (durum) => ({ uygulama: 'YouTube', baslik: 'Oyun videosu', sanatci: 'Bir Kanal', durum });
   const tv = sahteTv([yt('playing'), yt('paused')]);
-  const b = new EngelBekcisi({ tvler: [tv], liste: l, bekle: async () => {} });
-  const kural = await b.denetle(tv);
+  let kapatma = 0;
+  tv.appleUygulamaKapat = async () => { kapatma++; };
+  const saat = { t: 1e12 };
+  const b = new EngelBekcisi({ tvler: [tv], liste: l, bekle: async () => {}, simdi: () => saat.t });
+  const oynat = async () => { tv.sira = [yt('playing'), yt('paused')]; return b.denetle(tv); };
+  tv.appledaOynayan = async () => (tv.sira.length > 1 ? tv.sira.shift() : tv.sira[0]);
+  const kural = await oynat();
   assert.equal(kural.tur, 'kelime');
-  assert.deepEqual(tv.komutlar, ['pause', 'menu']);
+  assert.deepEqual(tv.komutlar, ['pause'], '1. kademe: yalnız duraklat');
   assert.deepEqual(tv.bildirimler, [[MESAJ, 8]]);
   assert.equal(l.durum().olaylar[0].baslik, 'Oyun videosu');
   // duraklatılmış haliyle tekrar sorulunca bir şey yapılmaz
   assert.equal(await b.denetle(tv), null);
-  assert.deepEqual(tv.komutlar, ['pause', 'menu']);
+  saat.t += 60000;
+  await oynat();
+  assert.deepEqual(tv.komutlar, ['pause', 'pause', 'menu', 'menu'], '2. kademe: duraklat + geri ×2');
+  saat.t += 60000;
+  await oynat();
+  assert.equal(kapatma, 1, '3. kademe: YouTube kapatılır');
+  assert.deepEqual(l.durum().olaylar.map((o) => o.seviye), [3, 2, 1]);
+  // 10 dk sessizlikten sonra yeniden 1. kademe
+  saat.t += 11 * 60000;
+  tv.komutlar.length = 0;
+  await oynat();
+  assert.deepEqual(tv.komutlar, ['pause']);
   temizle();
 });
 
@@ -110,7 +126,7 @@ test('bekçi: tuş kaçtıysa (hâlâ oynuyor) bir kez daha; YouTube dışı ve 
   const yt = { uygulama: 'YouTube', baslik: 'Oyun videosu', sanatci: 'K', durum: 'playing' };
   const tv = sahteTv([yt, yt]);
   await new EngelBekcisi({ tvler: [tv], liste: l, bekle: async () => {} }).denetle(tv);
-  assert.deepEqual(tv.komutlar, ['pause', 'menu', 'pause', 'menu']);
+  assert.deepEqual(tv.komutlar, ['pause', 'pause'], 'tuş kaçtıysa yeniden duraklatılır');
   const nf = sahteTv([{ uygulama: 'Netflix', baslik: 'Oyun', durum: 'playing' }]);
   assert.equal(await new EngelBekcisi({ tvler: [nf], liste: l, bekle: async () => {} }).denetle(nf), null);
   const temiz = sahteTv([{ uygulama: 'YouTube', baslik: 'Belgesel', sanatci: 'K', durum: 'playing' }]);

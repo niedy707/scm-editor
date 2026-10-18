@@ -6,7 +6,7 @@ her komutta `atvremote` ile çalıştırmak Pi 3'te ~3,5 sn sürüyor (ölçüld
 açık tutar: ajan satır başına bir JSON istek yazar, yardımcı satır başına bir JSON yanıt döner.
 
 İstek:  {"no": 7, "cihaz": {"ip": "...", "id": "..."}, "is": "uygulama", "uygulama": "com.netflix.Netflix"}
-        is: "uygulama" (uygulama) · "tus" (tus) · "metin" (metin) · "uygulamalar" · "oynayan" · "uyku"
+        is: "uygulama" (uygulama) · "tus" (tus) · "metin" (metin) · "uygulamalar" · "oynayan" · "uyku" · "uygulama-kapat"
 Yanıt:  {"no": 7, "ok": true, ...}  ya da  {"no": 7, "ok": false, "hata": "..."}
 
 Kimlik bilgileri pyatv'nin dosya deposunda (argv[1]); eşleştirme bir kez `atvremote ... pair` ile yapılır.
@@ -18,7 +18,7 @@ import json
 import sys
 
 import pyatv
-from pyatv.const import Protocol
+from pyatv.const import InputAction, Protocol
 from pyatv.storage.file_storage import FileStorage
 
 # Ajanın gönderebileceği tuşlar (pyatv RemoteControl yöntemleri) — başka ad çağrılamaz.
@@ -128,6 +128,15 @@ class Yardimci:
             # Apple TV'yi uyutur (TV kilidi "TV + Apple TV": kilitli TV kapatılırken Apple TV'nin kumandası onu
             # CEC ile yeniden açmasın).
             await atv.power.turn_off()
+            return {}
+        if is_ == "uygulama-kapat":
+            # Öndeki uygulamayı kapatır (YouTube engeli 3. kademe): uygulama değiştirici (Ana Ekran ×2) açılınca
+            # odakta az önce açık olan uygulama durur; yukarı kaydırma onu kapatır; sonra ana ekran.
+            await atv.remote_control.home(InputAction.DoubleTap)
+            await asyncio.sleep(1.5)
+            await atv.touch.swipe(500, 850, 500, 100, 250)
+            await asyncio.sleep(1.0)
+            await atv.remote_control.home()
             return {}
         if is_ == "uygulamalar":
             return {"uygulamalar": [{"ad": a.name, "id": a.identifier} for a in await atv.apps.app_list()]}
