@@ -6,7 +6,7 @@ her komutta `atvremote` ile çalıştırmak Pi 3'te ~3,5 sn sürüyor (ölçüld
 açık tutar: ajan satır başına bir JSON istek yazar, yardımcı satır başına bir JSON yanıt döner.
 
 İstek:  {"no": 7, "cihaz": {"ip": "...", "id": "..."}, "is": "uygulama", "uygulama": "com.netflix.Netflix"}
-        is: "uygulama" (uygulama) · "tus" (tus) · "metin" (metin) · "uygulamalar" · "oynayan" · "uyku" · "uygulama-kapat"
+        is: "uygulama" (uygulama) · "tus" (tus) · "metin" (metin) · "uygulamalar" · "oynayan" · "uyku" · "uygulama-kapat" · "sistem"
 Yanıt:  {"no": 7, "ok": true, ...}  ya da  {"no": 7, "ok": false, "hata": "..."}
 
 Kimlik bilgileri pyatv'nin dosya deposunda (argv[1]); eşleştirme bir kez `atvremote ... pair` ile yapılır.
@@ -142,6 +142,16 @@ class Yardimci:
             await asyncio.sleep(1.0)
             await atv.remote_control.home()
             return {}
+        if is_ == "sistem":
+            # Ham Companion sistem durumu: asleep / screensaver / awake / idle. pyatv bunu power_state'te "On"a
+            # indiriyor (ekran koruyucu da On) — ekran koruyucuyu ayırt etmek için iç yapıdan okunur; olmazsa "unknown".
+            try:
+                from pyatv import interface
+                sd = atv._protocol_handlers.get(Protocol.Companion)  # noqa: SLF001 — herkese açık yolu yok
+                durum = await sd.interfaces[interface.Power].api.fetch_attention_state()
+                return {"sistem": durum.name.lower()}
+            except Exception:  # noqa: BLE001
+                return {"sistem": "unknown"}
         if is_ == "uygulamalar":
             return {"uygulamalar": [{"ad": a.name, "id": a.identifier} for a in await atv.apps.app_list()]}
         raise Hata(f"bilinmeyen iş: {is_}")

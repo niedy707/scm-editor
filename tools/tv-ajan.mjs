@@ -26,6 +26,8 @@
  *   TV_AJAN_PORT        varsayılan 3027 (PORTS_REGISTRY.md)
  *   TV_AJAN_TVLER       TV listesi (varsayılan <kök>/tv-ajan.tvler.json — git'e girmez)
  *   TV_AJAN_NETFLIX_EKRAN      1 → Netflix başlığını ekran görüntüsünden de oku (OCR; varsayılan kapalı)
+ *   TV_AJAN_BILGISIZ_UYGULAMA  Apple TV'de oynatma bilgisi vermeyen, ekranda hareket olan uygulamanın adı
+ *                              (varsayılan "Bilinmeyen uygulama"; bu evde "Flex IPTV")
  *   TV_AJAN_ANAHTARLAR  eşleşme anahtarları (varsayılan <kök>/.lgtv-clients.json)
  *   TV_AJAN_DURUM       rehber önbelleği dizini (varsayılan: systemd STATE_DIRECTORY, yoksa data/yerel/rehber)
  *
@@ -64,7 +66,10 @@ import http from 'node:http';
 import net from 'node:net';
 import crypto from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
-import { mkdir, writeFile, readdir, unlink } from 'node:fs/promises';
+import { mkdir, writeFile, readdir, unlink, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LgSsap } from './net/lg-ssap.mjs';
@@ -96,6 +101,11 @@ const ATV_YARDIMCI = resolve(ROOT, 'tools/atv-yardimci.py');
 // TV_AJAN_NETFLIX_EKRAN=1.
 const EKRAN_YAZI = resolve(ROOT, 'tools/ekran-yazi.py');
 const TESSERACT_VAR = process.env.TV_AJAN_NETFLIX_EKRAN === '1' && existsSync('/usr/bin/tesseract');
+// Apple TV'de oynatma bilgisi YAYINLAMAYAN uygulama (ör. Flex IPTV): ekranda hareket varsa bu adla kaydedilir.
+const EKRAN_HAREKET = resolve(ROOT, 'tools/ekran-hareket.py');
+const execFileP = promisify(execFile);
+const BILGISIZ_UYGULAMA = process.env.TV_AJAN_BILGISIZ_UYGULAMA || 'Bilinmeyen uygulama';
+const HAREKET_ESIGI = 4;   // 96×54 gri ortalama fark: oynayan video 30–60, durağan ~0 (ölçüldü 18.10.2026)
 const ANAHTAR_YOLU = process.env.TV_AJAN_ANAHTARLAR || resolve(ROOT, '.lgtv-clients.json');
 const DURUM_DIZINI = process.env.TV_AJAN_DURUM || process.env.STATE_DIRECTORY || resolve(ROOT, 'data/yerel/rehber');
 
@@ -193,7 +203,7 @@ export async function uyandir({ hazirMi, wol, sureMs = UYANMA_MS, araMs = 1500, 
 }
 
 export class Tv {
-  constructor({ id, ad, ip, mac, appletv }, anahtar, { rehber = null, wol = wolGonder, uyanma = {}, teshisDizini = null, log = () => {}, atv = null, ekranOku = null } = {}) {
+  constructor({ id, ad, ip, mac, appletv }, anahtar, { rehber = null, wol = wolGonder, uyanma = {}, teshisDizini = null, log = () => {}, atv = null, ekranOku = null, hareketOlc = null } = {}) {
     this.id = id;
     this.ad = ad;
     this.ip = ip;
@@ -203,6 +213,9 @@ export class Tv {
     this.kilit = null;               // TvKilidi (net/kilit.mjs) — ana akışta bağlanır
     // Netflix başlığı ekrandan (Apple TV vermiyor): ekranOku = JPEG → OCR bölgeleri
     this.netflix = appletv && ekranOku ? new NetflixOkuyucu({ ekranAl: () => this.sirayla(() => this.ekran()), oku: ekranOku, log }) : null;
+    this.hareketOlc = appletv ? hareketOlc : null;   // (jpegA, jpegB) → fark; bilgi vermeyen uygulama için
+    this._bilgisiz = null;
+    this.hareketAraMs = 1500;   // iki ekran görüntüsü arası
     this.appleSon = null;            // Apple TV'de en son açtırılan uygulama (netflix…), girişten çıkınca silinir
     this.anahtar = anahtar;
     this.rehber = rehber;
@@ -531,10 +544,43 @@ export class Tv {
     return this._netflixIsle(veri);
   }
 
-  /** Netflix oynuyorsa başlık/bölüm/süre ekrandan okunanla tamamlanır (net/netflix-ekran.mjs). */
+  /** Netflix oynuyorsa başlık/bölüm/süre ekrandan okunanla tamamlanır (net/netflix-ekran.mjs); ardından bilgisiz uygulama. */
   _netflixIsle(v) {
-    if (!this.netflix || !v) return v;
-    try { return this.netflix.tazele(v); } catch { return v; }
+    if (this.netflix && v) { try { v = this.netflix.tazele(v); } catch { /* yok say */ } }
+    return this._bilgisizIsle(v);
+  }
+
+  /**
+   * Oynatma bilgisi YAYINLAMAYAN uygulama (Flex IPTV — ölçüldü 18.10.2026: durum idle, başlık yok ve uygulama en son
+   * bilgi veren uygulama, ör. YouTube olarak KALIYOR). Apple TV "oynuyor" demiyorsa ve uyanıksa (ekran koruyucu
+   * değil — onun manzaraları da hareketli) TV ekranında hareket var mı bakılır; varsa oynayan BILGISIZ_UYGULAMA sayılır.
+   * Ölçüm en çok 60 sn'de bir, arka planda (durum sorgusu beklemez); karar 90 sn geçerli.
+   */
+  _bilgisizIsle(v) {
+    if (!this.hareketOlc || !this.appleTvVar()) return v;
+    if (v && ['playing', 'loading', 'seeking'].includes(v.durum)) { this._bilgisiz = null; return v; }
+    const simdi = Date.now();
+    if (!this._bilgisizCalisiyor && (!this._bilgisiz || simdi - this._bilgisiz.zaman > 60000)) this._bilgisizOlc().catch(() => {});
+    const k = this._bilgisiz;
+    if (!k || !k.oynuyor || simdi - k.zaman > 90000) return v;
+    return { uygulama: BILGISIZ_UYGULAMA, uygulamaId: null, baslik: null, sanatci: null, album: null, dizi: null, sezon: null, bolum: null, durum: 'playing', tur: 'unknown', konum: null, sure: null, tahmin: 'ekran-hareketi' };
+  }
+
+  async _bilgisizOlc() {
+    this._bilgisizCalisiyor = true;
+    try {
+      const { sistem } = await this.atv.iste(this.appletv, 'sistem', {}, 8000);
+      if (sistem !== 'awake' && sistem !== 'unknown') { this._bilgisiz = { zaman: Date.now(), oynuyor: false, sistem }; return; }
+      const a = await this.sirayla(() => this.ekran());
+      await sleep(this.hareketAraMs);
+      const b = await this.sirayla(() => this.ekran());
+      const fark = await this.hareketOlc(a, b);
+      this._bilgisiz = { zaman: Date.now(), oynuyor: fark >= HAREKET_ESIGI, fark, sistem };
+    } catch {
+      this._bilgisiz = { zaman: Date.now(), oynuyor: false };
+    } finally {
+      this._bilgisizCalisiyor = false;
+    }
   }
 
   /**
@@ -1049,6 +1095,20 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
   });
 }
 
+/** İki JPEG arasındaki hareket (tools/ekran-hareket.py, PIL): geçici dosyalar ajanın özel geçici dizininde. */
+async function ekranHareketi(a, b) {
+  const dizin = await mkdtemp(join(tmpdir(), 'hareket-'));
+  try {
+    await Promise.all([writeFile(join(dizin, 'a.jpg'), a), writeFile(join(dizin, 'b.jpg'), b)]);
+    const { stdout } = await execFileP('/usr/bin/python3', ['-I', EKRAN_HAREKET, join(dizin, 'a.jpg'), join(dizin, 'b.jpg')], { timeout: 20000 });
+    const fark = Number(stdout.trim());
+    if (!Number.isFinite(fark)) throw new Error('ekran-hareket.py anlaşılmayan çıktı');
+    return fark;
+  } finally {
+    await rm(dizin, { recursive: true, force: true });
+  }
+}
+
 function tvleriYukle(rehber, teshisDizini, atv = null) {
   if (!existsSync(TVLER_YOLU)) throw new Error(`TV listesi yok: ${TVLER_YOLU}`);
   const liste = JSON.parse(readFileSync(TVLER_YOLU, 'utf8'));
@@ -1061,7 +1121,7 @@ function tvleriYukle(rehber, teshisDizini, atv = null) {
     }
     if (t.appletv?.giris && !/^com\.webos\.app\.hdmi\d$/.test(t.appletv.giris)) throw new Error(`geçersiz Apple TV girişi (${t.id}): ${t.appletv.giris}`);
     const ekranOku = TESSERACT_VAR ? (jpeg) => ekranYazisi(jpeg, { python: '/usr/bin/python3', betik: EKRAN_YAZI }) : null;
-    return new Tv(t, anahtarlar[t.ip] || null, { rehber, teshisDizini, log: console.log, atv, ekranOku });
+    return new Tv(t, anahtarlar[t.ip] || null, { rehber, teshisDizini, log: console.log, atv, ekranOku, hareketOlc: ekranHareketi });
   });
 }
 

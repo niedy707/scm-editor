@@ -33,7 +33,7 @@ DOSYALAR=(
   tools/tv-ajan.mjs tools/ws-client.mjs tools/ssap-handshake.json
   tools/net/lg-ssap.mjs tools/net/lg-input.mjs tools/net/lg-screen.mjs tools/net/kanal-bul.mjs
   tools/net/rehber.mjs tools/net/wol.mjs tools/net/zamanlayici.mjs tools/net/atv-kopru.mjs tools/net/izleme.mjs tools/net/youtube-bul.mjs tools/net/engel.mjs tools/net/kilit.mjs tools/net/netflix-ekran.mjs tools/net/netflix-gecmis.mjs
-  tools/atv-yardimci.py tools/ekran-yazi.py
+  tools/atv-yardimci.py tools/ekran-yazi.py tools/ekran-hareket.py
   web/lib/order.js
 )
 for f in "${DOSYALAR[@]}"; do
