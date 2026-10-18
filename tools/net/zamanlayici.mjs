@@ -148,16 +148,21 @@ export class Zamanlayici {
    * Program görevi: bir kez (tarih + saat ya da X dk sonra) ya da haftalık (günler + saat).
    * Görev ya bir KANALA geçer ya da TV ekranında bir MESAJ gösterir (`mesaj: { metin, sureSn }`, ör. her gün
    * 22:00 "uyku saati" — kullanıcı, 18.10.2026). Mesaj görevi TV kapalıysa her zaman atlanır (TV'yi açmaz)
-   * ve ön uyarı göstermez.
+   * ve ön uyarı göstermez. `ortada: true` → ekranın ortasında çok satırlı uyarı penceresi (en çok 5 satır, 300 karakter;
+   * köşe bildirimi satır sonunu yutuyor); `sonraKapat: true` → gösterdikten sonra TV kapatılır (ör. "yemek saati").
    */
   async ekle({ tv, kanal, mesaj = null, zaman, tvKapaliysa = 'ac', etiket = null }) {
     let mesajKaydi = null;
     if (mesaj != null) {
-      const metin = typeof mesaj.metin === 'string' ? mesaj.metin.trim() : '';
+      const ortada = mesaj.ortada === true;
+      // Satır içi girinti korunur (imza satırı gibi); yalnız baştaki boş satırlar ve sondaki boşluk atılır.
+      const metin = typeof mesaj.metin === 'string' ? mesaj.metin.replace(/^(\s*\n)+/, '').trimEnd() : '';
       const sureSn = Number(mesaj.sureSn ?? 15);
-      if (!metin || metin.length > 160) throw new ZamanlayiciHata(400, 'mesaj 1-160 karakter olmalı');
+      const sinir = ortada ? 300 : 160;
+      if (!metin.trim() || metin.length > sinir) throw new ZamanlayiciHata(400, `mesaj 1-${sinir} karakter olmalı`);
+      if (ortada && metin.split('\n').length > 5) throw new ZamanlayiciHata(400, 'mesaj en çok 5 satır');
       if (!Number.isInteger(sureSn) || sureSn < 5 || sureSn > 120) throw new ZamanlayiciHata(400, 'mesaj süresi 5-120 sn olmalı');
-      mesajKaydi = { metin, sureSn };
+      mesajKaydi = { metin, sureSn, ...(ortada ? { ortada: true } : {}), ...(mesaj.sonraKapat === true ? { sonraKapat: true } : {}) };
       tvKapaliysa = 'atla';
     } else if (!kanal || typeof kanal !== 'string' || kanal.length > 60) throw new ZamanlayiciHata(400, 'kanal adı gerekli');
     if (etiket != null && (typeof etiket !== 'string' || etiket.length > 80)) throw new ZamanlayiciHata(400, 'etiket en çok 80 karakter');

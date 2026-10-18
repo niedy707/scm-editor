@@ -625,7 +625,9 @@ export class Tv {
     const kacir = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     let alertId = null;
     try {
-      alertId = (await this.iste('ssap://system.notifications/createAlert', { message: satirlar.map(kacir).join('<br>').slice(0, 300), buttons: [{ label: 'Tamam' }] })).alertId || null;
+      // Satır başı girintisi bölünmez boşlukla korunur (HTML boşlukları birleştirir) — ör. imza satırı.
+      const html = satirlar.map((x) => kacir(x).replace(/^ +/, (m) => '\u00a0'.repeat(m.length))).join('<br>').slice(0, 400);
+      alertId = (await this.iste('ssap://system.notifications/createAlert', { message: html, buttons: [{ label: 'Tamam' }] })).alertId || null;
     } catch {
       await this.toast(satirlar.join(' — ')).catch(() => {});
     }
@@ -1151,7 +1153,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       if (!t) return { sonuc: 'hata', neden: 'bilinmeyen TV' };
       if (g.mesaj) {   // ekranda mesaj (ör. her gün 22:00 uyku saati) — TV kapalıysa atla, asla açma
         if (!(await t.hazirMi())) return { sonuc: 'atlandi', neden: 'TV kapalıydı' };
-        await t.bildirimGoster(g.mesaj.metin, g.mesaj.sureSn);
+        if (g.mesaj.ortada) await t.uyariGoster(g.mesaj.metin.split('\n'), g.mesaj.sureSn * 1000);
+        else await t.bildirimGoster(g.mesaj.metin, g.mesaj.sureSn);
+        if (g.mesaj.sonraKapat) {
+          await t.sirayla(() => t.kapat());
+          return { sonuc: 'ok', neden: 'mesaj gösterildi, TV kapatıldı' };
+        }
         return { sonuc: 'ok', neden: 'mesaj gösterildi' };
       }
       if (g.tvKapaliysa === 'atla' && !(await t.hazirMi())) return { sonuc: 'atlandi', neden: 'TV kapalıydı' };

@@ -215,3 +215,16 @@ test('mesaj görevi: her gün belirli saatte TV ekranına mesaj; TV kapalıysa a
   await assert.rejects(z.ekle({ tv: 'tv1', mesaj: { metin: 'x', sureSn: 500 }, zaman: { tur: 'haftalik', saat: '22:00', gunler: [1] } }), (e) => e.kod === 400);
   z.durdur();
 });
+
+test('mesaj görevi: ortada çok satırlı (girinti korunur) ve sonra TV kapat; köşe mesajında 160, ortada 300 karakter / 5 satır', async () => {
+  const { z } = kur();   // 17.10.2026 20:00
+  const metin = 'Yemek saati: 21:00\nLütfen geç kalmayınız.\n            İmza';
+  const g = await z.ekle({ tv: 'tv1', mesaj: { metin: `\n${metin}  \n`, sureSn: 15, ortada: true }, zaman: { tur: 'tek', tarih: '2026-10-17', saat: '20:40' } });
+  assert.deepEqual(g.mesaj, { metin, sureSn: 15, ortada: true }, 'iç girinti korunur, baş/son boşluk atılır');
+  const k = await z.ekle({ tv: 'tv1', mesaj: { metin: 'Yemek saati geldi', sureSn: 10, ortada: true, sonraKapat: true }, zaman: { tur: 'tek', tarih: '2026-10-17', saat: '21:00' } });
+  assert.equal(k.mesaj.sonraKapat, true);
+  await assert.rejects(z.ekle({ tv: 'tv1', mesaj: { metin: 'a\nb\nc\nd\ne\nf', ortada: true }, zaman: { tur: 'tek', tarih: '2026-10-17', saat: '21:00' } }), /5 satır/);
+  await assert.rejects(z.ekle({ tv: 'tv1', mesaj: { metin: 'x'.repeat(200) }, zaman: { tur: 'tek', tarih: '2026-10-17', saat: '21:00' } }), /160/);
+  assert.ok(await z.ekle({ tv: 'tv1', mesaj: { metin: 'x'.repeat(200), ortada: true }, zaman: { tur: 'tek', tarih: '2026-10-17', saat: '21:00' } }));
+  z.durdur();
+});
