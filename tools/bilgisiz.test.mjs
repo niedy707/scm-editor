@@ -39,3 +39,11 @@ test('ekran koruyucu (manzaralar hareketli) ya da durağan ekran → tahmin yok'
   await bekle();
   assert.equal(duragan._bilgisizIsle(null), null);
 });
+
+test('Netflix bildiriliyorsa (menü, fragman) ekran hareketine bakılmaz — Netflix olarak kalır', async () => {
+  const tv = kur({ sistem: 'awake', fark: 42 });
+  const nf = { uygulama: 'Netflix', baslik: null, durum: 'idle' };
+  tv._bilgisizIsle(nf);
+  await bekle();
+  assert.equal(tv._bilgisizIsle(nf).uygulama, 'Netflix');
+});

@@ -562,6 +562,9 @@ export class Tv {
   _bilgisizIsle(v) {
     if (!this.hareketOlc || !this.appleTvVar()) return v;
     if (v && ['playing', 'loading', 'seeking'].includes(v.durum)) { this._bilgisiz = null; return v; }
+    // Netflix ön plandayken de "boşta" bildirir (menü, otomatik fragmanlar hareketli): Netflix'e "Apple TV" denmez —
+    // menü/fragman Netflix'in beklemesi sayılır (kullanıcı, 18.10.2026: "YouTube Netflix tanınıyor, onlara Apple TV deme").
+    if (v && /netflix/i.test(v.uygulama || '')) { this._bilgisiz = null; return v; }
     const simdi = Date.now();
     if (!this._bilgisizCalisiyor && (!this._bilgisiz || simdi - this._bilgisiz.zaman > 60000)) this._bilgisizOlc().catch(() => {});
     const k = this._bilgisiz;
