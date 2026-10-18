@@ -78,6 +78,7 @@ import { IzlemeKaydi, ozetle, trGun } from './net/izleme.mjs';
 import { YoutubeBulucu, ayir, anahtar as ytAnahtar } from './net/youtube-bul.mjs';
 import { EngelListesi, EngelBekcisi } from './net/engel.mjs';
 import { TvKilidi, KilitBekcisi } from './net/kilit.mjs';
+import { NetflixOkuyucu, ekranYazisi } from './net/netflix-ekran.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -88,6 +89,9 @@ const TVLER_YOLU = process.env.TV_AJAN_TVLER || resolve(ROOT, 'tv-ajan.tvler.jso
 // Apple TV (pyatv): kurulu Python ve yardımcı betik. Kimlik dosyası DURUM_DIZINI/pyatv.conf (eşleştirme yazar).
 const PYATV_PYTHON = process.env.TV_AJAN_PYATV || '/opt/pyatv/bin/python3';
 const ATV_YARDIMCI = resolve(ROOT, 'tools/atv-yardimci.py');
+// Netflix başlığı ekrandan (net/netflix-ekran.mjs): sistem Python'u + PIL + Tesseract gerekir; yoksa kapalı.
+const EKRAN_YAZI = resolve(ROOT, 'tools/ekran-yazi.py');
+const TESSERACT_VAR = existsSync('/usr/bin/tesseract');
 const ANAHTAR_YOLU = process.env.TV_AJAN_ANAHTARLAR || resolve(ROOT, '.lgtv-clients.json');
 const DURUM_DIZINI = process.env.TV_AJAN_DURUM || process.env.STATE_DIRECTORY || resolve(ROOT, 'data/yerel/rehber');
 
@@ -185,7 +189,7 @@ export async function uyandir({ hazirMi, wol, sureMs = UYANMA_MS, araMs = 1500, 
 }
 
 export class Tv {
-  constructor({ id, ad, ip, mac, appletv }, anahtar, { rehber = null, wol = wolGonder, uyanma = {}, teshisDizini = null, log = () => {}, atv = null } = {}) {
+  constructor({ id, ad, ip, mac, appletv }, anahtar, { rehber = null, wol = wolGonder, uyanma = {}, teshisDizini = null, log = () => {}, atv = null, ekranOku = null } = {}) {
     this.id = id;
     this.ad = ad;
     this.ip = ip;
@@ -193,6 +197,8 @@ export class Tv {
     this.appletv = appletv || null;  // { ip, id } — bu TV'ye bağlı Apple TV (pyatv)
     this.atv = atv;                  // AppleTvKopru (tüm TV'ler için tek)
     this.kilit = null;               // TvKilidi (net/kilit.mjs) — ana akışta bağlanır
+    // Netflix başlığı ekrandan (Apple TV vermiyor): ekranOku = JPEG → OCR bölgeleri
+    this.netflix = appletv && ekranOku ? new NetflixOkuyucu({ ekranAl: () => this.sirayla(() => this.ekran()), oku: ekranOku, log }) : null;
     this.appleSon = null;            // Apple TV'de en son açtırılan uygulama (netflix…), girişten çıkınca silinir
     this.anahtar = anahtar;
     this.rehber = rehber;
@@ -511,14 +517,20 @@ export class Tv {
   async appleOynayan() {
     if (!this.appleTvVar()) return null;
     const simdi = Date.now();
-    if (this._oynayan && simdi - this._oynayan.zaman < 10000) return this._oynayan.veri;
+    if (this._oynayan && simdi - this._oynayan.zaman < 10000) return this._netflixIsle(this._oynayan.veri);
     let veri = null;
     try {
       const { no, ok, ...v } = await this.atv.iste(this.appletv, 'oynayan', {}, 6000);
       veri = v;
     } catch { /* eşleşme yok ya da Apple TV yanıt vermedi */ }
     this._oynayan = { zaman: simdi, veri };
-    return veri;
+    return this._netflixIsle(veri);
+  }
+
+  /** Netflix oynuyorsa başlık/bölüm/süre ekrandan okunanla tamamlanır (net/netflix-ekran.mjs). */
+  _netflixIsle(v) {
+    if (!this.netflix || !v) return v;
+    try { return this.netflix.tazele(v); } catch { return v; }
   }
 
   /**
@@ -1044,7 +1056,8 @@ function tvleriYukle(rehber, teshisDizini, atv = null) {
       throw new Error(`geçersiz Apple TV kaydı (${t.id})`);
     }
     if (t.appletv?.giris && !/^com\.webos\.app\.hdmi\d$/.test(t.appletv.giris)) throw new Error(`geçersiz Apple TV girişi (${t.id}): ${t.appletv.giris}`);
-    return new Tv(t, anahtarlar[t.ip] || null, { rehber, teshisDizini, log: console.log, atv });
+    const ekranOku = TESSERACT_VAR ? (jpeg) => ekranYazisi(jpeg, { python: '/usr/bin/python3', betik: EKRAN_YAZI }) : null;
+    return new Tv(t, anahtarlar[t.ip] || null, { rehber, teshisDizini, log: console.log, atv, ekranOku });
   });
 }
 
