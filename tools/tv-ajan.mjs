@@ -53,6 +53,8 @@
  *   GET  /ses?tv=  · POST /ses {tv, seviye 0-100}  → ses düzeyi (Ch / Vol penceresindeki şerit)
  *   GET  /izleme?tv=&gun=YYYY-MM-DD&gunSayisi=N    → izleme geçmişi + özet (TV_AJAN_IZLEME=1 ise); YouTube
  *                                                     kesitlerinde bulunabildiyse `youtube` = video kimliği
+ *   GET  /engel  · POST /engel {metin, tur?}  · DELETE /engel?id=  · POST /engel/ayar {acik}
+ *                                                   → YouTube engelleri (kurallar, son engellenenler) — net/engel.mjs
  */
 
 import http from 'node:http';
@@ -72,6 +74,7 @@ import { Zamanlayici } from './net/zamanlayici.mjs';
 import { AppleTvKopru } from './net/atv-kopru.mjs';
 import { IzlemeKaydi, ozetle, trGun } from './net/izleme.mjs';
 import { YoutubeBulucu, ayir, anahtar as ytAnahtar } from './net/youtube-bul.mjs';
+import { EngelListesi, EngelBekcisi } from './net/engel.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -303,6 +306,12 @@ export class Tv {
   }
 
   async durum() {
+    const d = await this._durum();
+    this._sonDurum = { zaman: Date.now(), acik: !!d.acik, cihaz: d.cihaz || null };   // engel bekçisi okur
+    return d;
+  }
+
+  async _durum() {
     try {
       const guc = await this.gucDurumu();
       if (gucKapaliMi(guc)) {   // kapatılmış ama ağda bekliyor: kapalı göster, açmak uyandırma ister
@@ -489,6 +498,28 @@ export class Tv {
     return veri;
   }
 
+  /**
+   * Engel bekçisi için: TV açık ve Apple TV girişindeyse Apple TV'de oynayan (önbelleksiz), değilse null.
+   * Apple TV'ye ancak LG "açık, Apple TV girişinde" derse sorulur — kapalı TV'nin Apple TV'sine giden soru
+   * Apple TV'yi, o da CEC ile TV'yi uyandırabilir. LG durumu açıkken 8 sn, kapalıyken 30 sn'de bir tazelenir.
+   */
+  async appledaOynayan() {
+    if (!this.appleTvVar()) return null;
+    const son = this._sonDurum;
+    if (!son || Date.now() - son.zaman > (son.acik ? 8000 : 30000)) await this.durum();
+    if (!this._sonDurum?.acik || this._sonDurum.cihaz !== 'apple') return null;
+    const on = await this.iste('ssap://com.webos.applicationManager/getForegroundAppInfo');
+    if (!on.appId || on.appId !== this.appleUygulama) return null;
+    this._oynayan = null;
+    return this.appleOynayan();
+  }
+
+  /** Apple TV'ye pyatv tuşu ('pause', 'menu' …) — engel bekçisi kullanır. */
+  async appleKomut(tus) {
+    if (!this.appleTvVar()) throw new HttpHata(409, `${this.ad}: Apple TV bağlı değil`);
+    await this.atv.iste(this.appletv, 'tus', { tus });
+  }
+
   appleTvVar() {
     return !!(this.appletv && this.atv && this.atv.hazirMi());
   }
@@ -664,7 +695,7 @@ export async function youtubeEkle(kesitler, youtube, butceMs = 6000) {
   }
 }
 
-export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null, youtube = null } = {}) {
+export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null, youtube = null, engel = null } = {}) {
   const byId = new Map(tvler.map((t) => [t.id, t]));
   const tvAl = (id) => {
     const t = byId.get(String(id || ''));
@@ -761,6 +792,26 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         await youtubeEkle(kesitler, youtube);
         json(res, 200, { bas, bit, kesitler, ozet: ozetle(kesitler, { bas, bit }) });
         return;
+      }
+      // YouTube engelleri (ebeveyn denetimi): kurallar + son engellenenler; ekle/sil/aç-kapat.
+      if (url.pathname === '/engel' || url.pathname === '/engel/ayar') {
+        if (!engel) throw new HttpHata(503, 'engelleme kurulu değil (Apple TV yok ya da izleme kapalı)');
+        if (req.method === 'GET' && url.pathname === '/engel') { json(res, 200, engel.durum()); return; }
+        if (req.method === 'DELETE' && url.pathname === '/engel') {
+          await engel.sil(String(url.searchParams.get('id') || ''));
+          log('[engel] kural silindi');
+          json(res, 200, { ok: true, ...engel.durum() });
+          return;
+        }
+        if (req.method === 'POST') {
+          const g = await govdeOku(req);
+          if (url.pathname === '/engel/ayar') { json(res, 200, { ok: true, ...(await engel.ayarla({ acik: g.acik })) }); return; }
+          const { kural, varmis } = await engel.ekle({ metin: g.metin, tur: g.tur || null });
+          log(`[engel] kural ${varmis ? 'zaten vardı' : 'eklendi'}: ${kural.tur}`);
+          json(res, varmis ? 200 : 201, { ok: true, kural, varmis, ...engel.durum() });
+          return;
+        }
+        throw new HttpHata(405, 'yöntem desteklenmiyor');
       }
       if (req.method === 'GET' && url.pathname === '/zamanlayici') {
         if (!zamanlayici) throw new HttpHata(503, 'zamanlayıcı kurulu değil');
@@ -967,7 +1018,16 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     izleme.baslat();
     console.log('[izleme] kayıt açık (30 sn\'de bir, 365 gün saklanır)');
   }
-  const sunucu = sunucuKur(tvler, { rehber, zamanlayici, izleme, youtube });
+  // YouTube engelleri: kurallar durum dizininde; bekçi yalnız kural varken ve TV Apple TV girişindeyken sorar.
+  let engel = null;
+  if (tvler.some((t) => t.appletv)) {
+    engel = new EngelListesi({ dizin: DURUM_DIZINI, log: console.log });
+    await engel.yukle();
+    const bekci = new EngelBekcisi({ tvler, liste: engel, youtube, log: console.log });
+    bekci.baslat();
+    console.log(`[engel] bekçi açık (${engel.durum().kurallar.length} kural${engel.veri.acik ? '' : ', engelleme KAPALI'})`);
+  }
+  const sunucu = sunucuKur(tvler, { rehber, zamanlayici, izleme, youtube, engel });
   sunucu.listen(PORT, HOST, () => {
     const ozet = tvler.map((t) => `${t.id}${t.anahtar ? '' : ' (anahtarsız!)'}${t.mac ? '' : ' (MAC yok — açılamaz)'}`).join(', ');
     console.log(`[tv-ajan] ${HOST}:${PORT} dinleniyor · TV'ler: ${ozet} · rehber: ${DURUM_DIZINI}`);
