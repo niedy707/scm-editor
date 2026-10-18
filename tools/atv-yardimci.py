@@ -27,6 +27,10 @@ TUSLAR = {
     "play", "pause", "play_pause", "skip_forward", "skip_backward", "next", "previous",
 }
 BOSTA_KAPAT_SN = 300
+# "Ne oynuyor" sorusunda bağlantı en çok bu kadar yaşlı olabilir: uzun açık kalan MRP bağlantısı DONUYOR — 18.10.2026'da
+# salon Apple TV'de YouTube oynarken eski "duraklatıldı" durumunu göstermeye devam etti, engel devreye girmedi
+# (yeni bağlantı doğruyu verdi). Bekçi 4 sn'de bir sorduğu için bağlantı hiç boşta kalmıyordu.
+OYNAYAN_TAZE_SN = 60
 
 
 class Hata(Exception):
@@ -54,7 +58,7 @@ class Yardimci:
         self.baglantilar = {}  # id -> {"atv": AppleTV, "son": zaman}
         self.kilitler = {}
 
-    async def baglan(self, cihaz):
+    async def baglan(self, cihaz, taze_sn=None):
         anahtar = str(cihaz.get("id") or "")
         ip = str(cihaz.get("ip") or "")
         if not anahtar or not ip:
@@ -62,6 +66,9 @@ class Yardimci:
         kilit = self.kilitler.setdefault(anahtar, asyncio.Lock())
         async with kilit:
             b = self.baglantilar.get(anahtar)
+            if b and taze_sn is not None and self.loop.time() - b["acildi"] > taze_sn:
+                self.birak(anahtar)   # eskidi: kapat, aşağıda yeniden bağlan
+                b = None
             if b:
                 b["son"] = self.loop.time()
                 return b["atv"]
@@ -77,7 +84,7 @@ class Yardimci:
                 raise Hata("Apple TV eşleştirilmemiş (Companion)")
             atv = await pyatv.connect(conf, self.loop, storage=self.depo)
             atv.listener = Dinleyici(self, anahtar)
-            self.baglantilar[anahtar] = {"atv": atv, "son": self.loop.time()}
+            self.baglantilar[anahtar] = {"atv": atv, "son": self.loop.time(), "acildi": self.loop.time()}
             return atv
 
     def birak(self, anahtar):
@@ -91,7 +98,7 @@ class Yardimci:
     async def isle(self, istek):
         cihaz = istek.get("cihaz") or {}
         is_ = istek.get("is")
-        atv = await self.baglan(cihaz)
+        atv = await self.baglan(cihaz, taze_sn=OYNAYAN_TAZE_SN if is_ == "oynayan" else None)
         if is_ == "uygulama":
             uyg = str(istek.get("uygulama") or "")
             if not uyg or len(uyg) > 100:
