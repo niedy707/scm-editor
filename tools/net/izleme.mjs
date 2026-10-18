@@ -13,7 +13,9 @@
  *
  * Kayıt: <dizin>/YYYY-MM-DD.jsonl (İstanbul günü, kesitin BAŞLADIĞI güne), satır = kapanmış kesit:
  *   { tv, bas, bit, kaynak, kanal: {no, ad} | null, program, uygulama, ekranKapali?, pasif? }
- * Açık kesitler <dizin>/acik.json. `saklaGun` günden eski dosyalar silinir. Bu veri kişiseldir: yalnız ajanın
+ * Açık kesitler <dizin>/acik.json. Sonradan bulunan başlıklar (ör. Netflix izleme geçmişi) <dizin>/ekler.json'da
+ * "tv|bas" anahtarıyla durur ve okurken programı boş kesite işlenir — gün dosyaları değiştirilmez.
+ * `saklaGun` günden eski dosyalar (ve ekler) silinir. Bu veri kişiseldir: yalnız ajanın
  * durum dizininde durur, hiçbir yere gönderilmez; okunması belirteçli /izleme ucundan.
  */
 import { mkdir, readFile, writeFile, appendFile, readdir, unlink, rename } from 'node:fs/promises';
@@ -58,10 +60,12 @@ export class IzlemeKaydi {
     this.zamanlayici = null;
     this.sonTemizlik = null;
     this.yaziliyor = Promise.resolve();
+    this.ekler = {};
   }
 
   async yukle() {
     await mkdir(this.dizin, { recursive: true });
+    try { this.ekler = JSON.parse(await readFile(join(this.dizin, 'ekler.json'), 'utf8')) || {}; } catch { this.ekler = {}; }
     try {
       const j = JSON.parse(await readFile(join(this.dizin, 'acik.json'), 'utf8'));
       // Ajan kapalıyken geçen süre izleme sayılmaz: yüklenen açık kesitler son görüldükleri anda kapatılır.
@@ -124,8 +128,30 @@ export class IzlemeKaydi {
     } catch (e) { this.log(`[izleme] açık kesitler yazılamadı: ${e.message}`); }
   }
 
+  /** Kesite sonradan bulunan bilgi (program vb.) — "tv|bas" anahtarıyla, okurken boş alanlara işlenir. */
+  async ekYaz(kesit, ek) {
+    this.ekler[`${kesit.tv}|${kesit.bas}`] = { ...ek, zaman: this.simdi() };
+    await this._eklerKaydet();
+  }
+
+  async _eklerKaydet() {
+    const tmp = join(this.dizin, 'ekler.json.tmp');
+    try {
+      await writeFile(tmp, JSON.stringify(this.ekler));
+      await rename(tmp, join(this.dizin, 'ekler.json'));
+    } catch (e) { this.log(`[izleme] ekler yazılamadı: ${e.message}`); }
+  }
+
+  _ekUygula(k) {
+    const e = this.ekler[`${k.tv}|${k.bas}`];
+    if (e && !k.program && e.program) { k.program = e.program; k.ek = e.kaynak || true; }
+    return k;
+  }
+
   async temizle(t = this.simdi()) {
     const sinir = trGun(t - this.saklaGun * GUN);
+    const eskiEk = Object.keys(this.ekler).filter((a) => Number(a.split('|')[1]) < t - this.saklaGun * GUN);
+    if (eskiEk.length) { for (const a of eskiEk) delete this.ekler[a]; await this._eklerKaydet(); }
     let silinen = 0;
     for (const f of await readdir(this.dizin).catch(() => [])) {
       const m = /^(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(f);
@@ -145,12 +171,12 @@ export class IzlemeKaydi {
         if (!s) continue;
         let k;
         try { k = JSON.parse(s); } catch { continue; }
-        if ((!tv || k.tv === tv) && k.bit > bas && k.bas < bit) sonuc.push(k);
+        if ((!tv || k.tv === tv) && k.bit > bas && k.bas < bit) sonuc.push(this._ekUygula(k));
       }
     }
     for (const k of this.acik.values()) {
       if ((!tv || k.tv === tv) && k.son > bas && k.bas < bit) {
-        sonuc.push({ tv: k.tv, bas: k.bas, bit: k.son, kaynak: k.kaynak, kanal: k.kanal, program: k.program, uygulama: k.uygulama, ...(k.ekranKapali ? { ekranKapali: true } : {}), ...(k.pasif ? { pasif: k.pasif } : {}), acik: true });
+        sonuc.push(this._ekUygula({ tv: k.tv, bas: k.bas, bit: k.son, kaynak: k.kaynak, kanal: k.kanal, program: k.program, uygulama: k.uygulama, ...(k.ekranKapali ? { ekranKapali: true } : {}), ...(k.pasif ? { pasif: k.pasif } : {}), acik: true }));
       }
     }
     return sonuc.sort((a, b) => a.bas - b.bas);

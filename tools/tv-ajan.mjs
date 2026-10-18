@@ -25,6 +25,7 @@
  *   TV_AJAN_HOST        dinlenecek adres (varsayılan 127.0.0.1; pi63'te Tailscale IP'si)
  *   TV_AJAN_PORT        varsayılan 3027 (PORTS_REGISTRY.md)
  *   TV_AJAN_TVLER       TV listesi (varsayılan <kök>/tv-ajan.tvler.json — git'e girmez)
+ *   TV_AJAN_NETFLIX_ARALIK_DK  başlığı eksik Netflix kesitleri için izleme geçmişi sorgu aralığı (varsayılan 60)
  *   TV_AJAN_ANAHTARLAR  eşleşme anahtarları (varsayılan <kök>/.lgtv-clients.json)
  *   TV_AJAN_DURUM       rehber önbelleği dizini (varsayılan: systemd STATE_DIRECTORY, yoksa data/yerel/rehber)
  *
@@ -79,6 +80,7 @@ import { YoutubeBulucu, ayir, anahtar as ytAnahtar } from './net/youtube-bul.mjs
 import { EngelListesi, EngelBekcisi } from './net/engel.mjs';
 import { TvKilidi, KilitBekcisi } from './net/kilit.mjs';
 import { NetflixOkuyucu, ekranYazisi } from './net/netflix-ekran.mjs';
+import { NetflixGecmisi, NetflixDoldurucu } from './net/netflix-gecmis.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -1111,6 +1113,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     await izleme.yukle();
     izleme.baslat();
     console.log('[izleme] kayıt açık (30 sn\'de bir, 365 gün saklanır)');
+    // Başlığı eksik Netflix kesitleri: profilin izleme geçmişinden — yalnız eksik varken ve çerez dosyası
+    // (netflix.cerez, kullanıcı koyar) varsa Netflix'e gider. Aralık rutin 60 dk; TV_AJAN_NETFLIX_ARALIK_DK ile değişir.
+    const nfDk = Math.min(Math.max(Number(process.env.TV_AJAN_NETFLIX_ARALIK_DK) || 60, 15), 24 * 60);
+    new NetflixDoldurucu({ izleme, gecmis: new NetflixGecmisi({ cerezDosyasi: join(DURUM_DIZINI, 'netflix.cerez'), log: console.log }), aralikMs: nfDk * 60000, log: console.log }).baslat();
+    console.log(`[netflix-geçmiş] eksik başlıklar için ${nfDk} dk'da bir (yalnız eksik varken)`);
   }
   // YouTube engelleri: kurallar durum dizininde; bekçi yalnız kural varken ve TV Apple TV girişindeyken sorar.
   let engel = null;
