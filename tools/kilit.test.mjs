@@ -36,9 +36,12 @@ test('kilit: süreli kilit süresi dolunca kalkar; süresiz kalır; diske yazıl
   temizle();
 });
 
-function sahteTv(acik) {
+function sahteTv(acik, appletv = null) {
   const olan = [];
-  return { id: 'tv1', olan, acikMi: async () => acik.shift() ?? false, toast: async (m) => olan.push(['toast', m]), kapat: async () => olan.push(['kapat']) };
+  return {
+    id: 'tv1', appletv, olan, acikMi: async () => acik.shift() ?? false,
+    uyariGoster: async (m) => olan.push(['uyari', m]), appleUyut: async () => olan.push(['apple-uyku']), kapat: async () => olan.push(['kapat']),
+  };
 }
 
 test('bekçi: kilitli TV açılınca uyarı + kapat + olay; kapalıysa ya da kilitli değilse dokunmaz', async () => {
@@ -49,10 +52,29 @@ test('bekçi: kilitli TV açılınca uyarı + kapat + olay; kapalıysa ya da kil
   assert.deepEqual(tv.olan, []);
   await k.kilitle('tv1');
   assert.equal(await b.denetle(tv), 'kapatildi');
-  assert.deepEqual(tv.olan, [['toast', KILIT_MESAJI], ['kapat']]);
+  assert.deepEqual(tv.olan, [['uyari', KILIT_MESAJI], ['kapat']], 'Apple TV yok: yalnız TV');
   assert.equal(k.durum().olaylar[0].tv, 'tv1');
   assert.equal(await b.denetle(tv), 'kapali');
   assert.equal(tv.olan.length, 2);
+  temizle();
+});
+
+test('kapsam: TV + Apple TV → mesaj, Apple TV uyku, TV kapat; yalnız TV → Apple TV\'ye dokunmaz; mesaj ayarı', async () => {
+  const { k, temizle } = kur();
+  await k.mesajAyarla('Bu TV kilitlidir, izlenemez!\nimza: deneme');
+  assert.deepEqual(k.mesaj(), ['Bu TV kilitlidir, izlenemez!', 'imza: deneme']);
+  await assert.rejects(k.mesajAyarla('a\nb\nc\nd'), /3 satır/);
+  await assert.rejects(k.kilitle('tv1', null, 'apple'), /kapsam/);
+  const ikisi = sahteTv([true], { ip: '192.0.2.5', id: 'x' });
+  await k.kilitle('tv1');
+  await new KilitBekcisi({ tvler: [ikisi], kilit: k, bekle: async () => {} }).denetle(ikisi);
+  assert.deepEqual(ikisi.olan, [['uyari', ['Bu TV kilitlidir, izlenemez!', 'imza: deneme']], ['apple-uyku'], ['kapat']]);
+  const yalniz = sahteTv([true], { ip: '192.0.2.5', id: 'x' });
+  await k.kilitle('tv1', null, 'tv');
+  await new KilitBekcisi({ tvler: [yalniz], kilit: k, bekle: async () => {} }).denetle(yalniz);
+  assert.deepEqual(yalniz.olan.map((x) => x[0]), ['uyari', 'kapat']);
+  await k.mesajAyarla('');
+  assert.deepEqual(k.mesaj(), KILIT_MESAJI);
   temizle();
 });
 

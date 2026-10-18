@@ -1,16 +1,19 @@
 /**
  * TV kilidi (ebeveyn denetimi): kilitli TV açılamaz.
  *  - Kumandanın ve zamanlayıcının açma komutları hiç uygulanmaz (Tv.kilitDenetle → 423).
- *  - TV kendi kumandasıyla (ya da Apple TV'nin CEC'iyle) açılırsa bekçi birkaç saniye içinde görür: ekranda
- *    "🔒 Bu TV şu an kilitli" yazar ve TV'yi kapatır. Her deneme olay olarak kaydedilir (panel telefona bildirir).
+ *  - TV kendi kumandasıyla (ya da Apple TV'nin CEC'iyle) açılırsa bekçi birkaç saniye içinde görür: ekranın
+ *    ortasında kilit mesajı (5 sn), kapsam "TV + Apple TV" ise Apple TV uyutulur, sonra TV kapatılır. Her deneme
+ *    olay olarak kaydedilir (panel telefona bildirir).
  * Kilit süreli (`bitis`, ms) ya da süresiz (`bitis: null`); süre dolunca kendiliğinden kalkar.
+ * Mesaj satırları `mesaj` ayarında (kişisel imza vb. koda değil ajanın durum dizinine yazılır).
  * Kayıt <dizin>/kilit.json — ajanın durum dizininde, kişisel veri.
  */
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-export const KILIT_MESAJI = '🔒 Bu TV şu an kilitli';
+export const KILIT_MESAJI = ['🔒 Bu TV kilitlidir, izlenemez!'];
+const KAPSAMLAR = new Set(['tv', 'tv+apple']);
 const EN_COK_DK = 30 * 24 * 60;
 const EN_COK_OLAY = 200;
 
@@ -21,14 +24,14 @@ export class KilitHata extends Error {
 export class TvKilidi {
   constructor({ dizin, simdi = Date.now, log = () => {} }) {
     Object.assign(this, { dosya: join(dizin, 'kilit.json'), simdi, log });
-    this.veri = { kilitler: {}, olaylar: [] };
+    this.veri = { kilitler: {}, olaylar: [], mesaj: null };
     this.yaziliyor = Promise.resolve();
   }
 
   async yukle() {
     try {
       const j = JSON.parse(await readFile(this.dosya, 'utf8'));
-      this.veri = { kilitler: j.kilitler && typeof j.kilitler === 'object' ? j.kilitler : {}, olaylar: Array.isArray(j.olaylar) ? j.olaylar : [] };
+      this.veri = { kilitler: j.kilitler && typeof j.kilitler === 'object' ? j.kilitler : {}, olaylar: Array.isArray(j.olaylar) ? j.olaylar : [], mesaj: Array.isArray(j.mesaj) ? j.mesaj : null };
     } catch { /* yok — kilit yok */ }
   }
 
@@ -48,14 +51,30 @@ export class TvKilidi {
   durum() {
     const kilitler = {};
     for (const id of Object.keys(this.veri.kilitler)) { const k = this.bilgi(id); if (k) kilitler[id] = k; }
-    return { kilitler, olaylar: this.veri.olaylar.slice(-50).reverse() };
+    return { kilitler, olaylar: this.veri.olaylar.slice(-50).reverse(), mesaj: this.mesaj() };
   }
 
-  /** `dk` null → süresiz; aksi halde 1 dk – 30 gün. */
-  async kilitle(tvId, dk = null) {
+  /** TV'de gösterilecek satırlar (ayar yoksa varsayılan). */
+  mesaj() { return this.veri.mesaj && this.veri.mesaj.length ? this.veri.mesaj : KILIT_MESAJI; }
+
+  /** Mesaj satırları: dizi ya da "\n" ile ayrılmış metin; en çok 3 satır, satır başı 80 karakter. Boş → varsayılan. */
+  async mesajAyarla(m) {
+    const satirlar = (Array.isArray(m) ? m : String(m ?? '').split('\n')).map((x) => String(x).trim()).filter(Boolean);
+    if (satirlar.length > 3 || satirlar.some((x) => x.length > 80)) throw new KilitHata(400, 'en çok 3 satır, satır başına 80 karakter');
+    this.veri.mesaj = satirlar.length ? satirlar : null;
+    await this._kaydet();
+    return this.mesaj();
+  }
+
+  /**
+   * `dk` null → süresiz; aksi halde 1 dk – 30 gün. `kapsam`: 'tv' (yalnız TV kapatılır) ya da 'tv+apple'
+   * (kapatmadan önce Apple TV de uyutulur — Apple TV'nin kumandası TV'yi CEC ile yeniden açamasın).
+   */
+  async kilitle(tvId, dk = null, kapsam = 'tv+apple') {
     if (dk != null && !(Number.isInteger(dk) && dk >= 1 && dk <= EN_COK_DK)) throw new KilitHata(400, `süre 1 dk – ${EN_COK_DK / 1440} gün ya da süresiz olmalı`);
+    if (!KAPSAMLAR.has(kapsam)) throw new KilitHata(400, 'kapsam tv ya da tv+apple olmalı');
     const zaman = this.simdi();
-    this.veri.kilitler[tvId] = { bitis: dk == null ? null : zaman + dk * 60000, zaman };
+    this.veri.kilitler[tvId] = { bitis: dk == null ? null : zaman + dk * 60000, zaman, kapsam };
     await this._kaydet();
     return this.veri.kilitler[tvId];
   }
@@ -83,11 +102,11 @@ export class TvKilidi {
 
 /**
  * Bekçi: her `aralikMs`'de yalnız KİLİTLİ TV'lere "açık mısın" diye sorar; açıksa uyarı + kapat.
- * TV nesnesinden beklenen: `acikMi()`, `toast(mesaj)`, `kapat()`.
+ * TV nesnesinden beklenen: `acikMi()`, `uyariGoster(satirlar, ms)`, `kapat()`; Apple TV'si varsa `appletv` + `appleUyut()`.
  */
 export class KilitBekcisi {
-  constructor({ tvler, kilit, aralikMs = 3000, bekle = (ms) => new Promise((r) => setTimeout(r, ms)), simdi = Date.now, log = () => {} }) {
-    Object.assign(this, { tvler, kilit, aralikMs, bekle, simdi, log });
+  constructor({ tvler, kilit, aralikMs = 3000, mesajMs = 5000, bekle = (ms) => new Promise((r) => setTimeout(r, ms)), simdi = Date.now, log = () => {} }) {
+    Object.assign(this, { tvler, kilit, aralikMs, mesajMs, bekle, simdi, log });
     this.mesgul = new Set();
     this.zamanlayici = null;
   }
@@ -106,13 +125,14 @@ export class KilitBekcisi {
 
   /** Kilitli ve açıksa kapatır; ne yapıldığını döner ('kapatildi' | 'kapali' | null = kilitli değil). */
   async denetle(tv) {
-    if (!this.kilit.bilgi(tv.id) || this.mesgul.has(tv.id)) return null;
+    const k = this.kilit.bilgi(tv.id);
+    if (!k || this.mesgul.has(tv.id)) return null;
     this.mesgul.add(tv.id);
     try {
       if (!(await tv.acikMi())) return 'kapali';
       this.log(`[kilit] ${tv.id} kilitliyken açıldı — kapatılıyor`);
-      await tv.toast(KILIT_MESAJI).catch(() => {});
-      await this.bekle(2000);   // mesaj okunsun
+      await tv.uyariGoster(this.kilit.mesaj(), this.mesajMs).catch(() => {});   // okunsun diye bekler
+      if (k.kapsam !== 'tv' && tv.appletv) await tv.appleUyut().catch((e) => this.log(`[kilit] ${tv.id} Apple TV uyutulamadı: ${e.message}`));
       try { await tv.kapat(); } catch (e) { this.log(`[kilit] ${tv.id} kapatılamadı: ${e.message}`); }
       await this.kilit.olayEkle({ tv: tv.id, ne: 'kapatildi' });
       await this.bekle(4000);   // kapanma sürerken yeniden "açık" görüp ikinci kez kapatmasın

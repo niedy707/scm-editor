@@ -6,7 +6,7 @@ her komutta `atvremote` ile çalıştırmak Pi 3'te ~3,5 sn sürüyor (ölçüld
 açık tutar: ajan satır başına bir JSON istek yazar, yardımcı satır başına bir JSON yanıt döner.
 
 İstek:  {"no": 7, "cihaz": {"ip": "...", "id": "..."}, "is": "uygulama", "uygulama": "com.netflix.Netflix"}
-        is: "uygulama" (uygulama) · "tus" (tus) · "metin" (metin) · "uygulamalar" · "oynayan"
+        is: "uygulama" (uygulama) · "tus" (tus) · "metin" (metin) · "uygulamalar" · "oynayan" · "uyku"
 Yanıt:  {"no": 7, "ok": true, ...}  ya da  {"no": 7, "ok": false, "hata": "..."}
 
 Kimlik bilgileri pyatv'nin dosya deposunda (argv[1]); eşleştirme bir kez `atvremote ... pair` ile yapılır.
@@ -124,6 +124,11 @@ class Yardimci:
                 "dizi": p.series_name or None, "sezon": p.season_number, "bolum": p.episode_number,
                 "durum": ad(p.device_state), "tur": ad(p.media_type), "konum": p.position, "sure": p.total_time,
             }
+        if is_ == "uyku":
+            # Apple TV'yi uyutur (TV kilidi "TV + Apple TV": kilitli TV kapatılırken Apple TV'nin kumandası onu
+            # CEC ile yeniden açmasın).
+            await atv.power.turn_off()
+            return {}
         if is_ == "uygulamalar":
             return {"uygulamalar": [{"ad": a.name, "id": a.identifier} for a in await atv.apps.app_list()]}
         raise Hata(f"bilinmeyen iş: {is_}")

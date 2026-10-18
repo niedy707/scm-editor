@@ -53,7 +53,8 @@
  *   GET  /ses?tv=  · POST /ses {tv, seviye 0-100}  → ses düzeyi (Ch / Vol penceresindeki şerit)
  *   GET  /izleme?tv=&gun=YYYY-MM-DD&gunSayisi=N    → izleme geçmişi + özet (TV_AJAN_IZLEME=1 ise); YouTube
  *                                                     kesitlerinde bulunabildiyse `youtube` = video kimliği
- *   GET  /kilit  · POST /kilit {tv, dk?}  · DELETE /kilit?tv=   → TV kilidi (dk yok → süresiz) — net/kilit.mjs
+ *   GET  /kilit  · POST /kilit {tv, dk?, kapsam?}  · DELETE /kilit?tv=  · POST /kilit/ayar {mesaj}
+ *                                                   → TV kilidi (dk yok → süresiz; kapsam tv | tv+apple) — net/kilit.mjs
  *   GET  /engel  · POST /engel {metin, tur?}  · DELETE /engel?id=  · POST /engel/ayar {acik}
  *                                                   → YouTube engelleri (kurallar, son engellenenler) — net/engel.mjs
  */
@@ -536,6 +537,28 @@ export class Tv {
     return this.appleOynayan();
   }
 
+  /** Apple TV'yi uyutur (kilit bekçisi, kapsam "TV + Apple TV"). */
+  async appleUyut() {
+    if (!this.appleTvVar()) return;
+    await this.atv.iste(this.appletv, 'uyku', {}, 10000);
+  }
+
+  /**
+   * Ekranın ortasında uyarı penceresi (LG createAlert — köşedeki bildirim satır sonunu yutuyor, bu göstermiyor):
+   * `satirlar` alt alta, `sureMs` sonra kapatılır. Pencere açılamazsa köşe bildirimine düşer.
+   */
+  async uyariGoster(satirlar, sureMs = 5000) {
+    const kacir = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let alertId = null;
+    try {
+      alertId = (await this.iste('ssap://system.notifications/createAlert', { message: satirlar.map(kacir).join('<br>').slice(0, 300), buttons: [{ label: 'Tamam' }] })).alertId || null;
+    } catch {
+      await this.toast(satirlar.join(' — ')).catch(() => {});
+    }
+    await sleep(sureMs);
+    if (alertId) await this.iste('ssap://system.notifications/closeAlert', { alertId }).catch(() => {});
+  }
+
   /** Apple TV'ye pyatv tuşu ('pause', 'menu' …) — engel bekçisi kullanır. */
   async appleKomut(tus) {
     if (!this.appleTvVar()) throw new HttpHata(409, `${this.ad}: Apple TV bağlı değil`);
@@ -818,22 +841,29 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
         return;
       }
       // TV kilidi (ebeveyn denetimi): kilitli TV açılamaz, açılırsa kapatılır. dk yoksa/null → süresiz.
-      if (url.pathname === '/kilit') {
+      if (url.pathname === '/kilit' || url.pathname === '/kilit/ayar') {
         if (!kilit) throw new HttpHata(503, 'kilit kurulu değil');
-        if (req.method === 'GET') { json(res, 200, kilit.durum()); return; }
+        const kilitYaniti = () => ({ ...kilit.durum(), tvler: tvler.map((t) => ({ id: t.id, ad: t.ad })) });
+        if (req.method === 'GET') { json(res, 200, kilitYaniti()); return; }
+        if (req.method === 'POST' && url.pathname === '/kilit/ayar') {
+          await kilit.mesajAyarla((await govdeOku(req)).mesaj);
+          log('[kilit] mesaj değişti');
+          json(res, 200, { ok: true, ...kilitYaniti() });
+          return;
+        }
         if (req.method === 'POST') {
           const g = await govdeOku(req);
           const t = tvAl(g.tv);
-          await kilit.kilitle(t.id, g.dk ?? null);
+          await kilit.kilitle(t.id, g.dk ?? null, g.kapsam || (t.appletv ? 'tv+apple' : 'tv'));
           log(`[kilit] ${t.id} kilitlendi (${g.dk ? `${g.dk} dk` : 'süresiz'})`);
-          json(res, 200, { ok: true, ...kilit.durum() });
+          json(res, 200, { ok: true, ...kilitYaniti() });
           return;
         }
         if (req.method === 'DELETE') {
           const t = tvAl(url.searchParams.get('tv'));
           await kilit.ac(t.id);
           log(`[kilit] ${t.id} kilidi açıldı`);
-          json(res, 200, { ok: true, ...kilit.durum() });
+          json(res, 200, { ok: true, ...kilitYaniti() });
           return;
         }
         throw new HttpHata(405, 'yöntem desteklenmiyor');
