@@ -83,3 +83,30 @@ test('doldurucu: başlığı eksik Netflix kesiti yoksa Netflix\'e hiç gidilmez
   assert.equal((await iz2.kesitler({ bas: tr(0), bit: tr(23, 59) })).find((x) => x.uygulama === 'Netflix').program, 'Bir Dizi S1 — 1. Bölüm');
   k.temizle();
 });
+
+test('doldurucu takvimi: izlenen başlıksız Netflix varsa hemen; veri yoksa 15 → 30 → 60 dk; pasif/kısa kesit tetiklemez', async () => {
+  const k = kur();
+  const saat = { t: tr(14, 0) };
+  const iz = new IzlemeKaydi({ dizin: join(k.dizin, 'izleme'), tvler: [], simdi: () => saat.t });
+  await iz.yukle();
+  const n = sahteNetflix({ ogeler: [] });
+  const sorgular = () => n.istekler.filter((x) => x.url.includes('/settings/viewed')).length;
+  const d = new NetflixDoldurucu({ izleme: iz, gecmis: new NetflixGecmisi({ cerezDosyasi: join(k.dizin, 'netflix.cerez'), getir: n.getir }), simdi: () => saat.t });
+  await iz._yaz('oturma', { bas: tr(13, 50), kaynak: 'apple', uygulama: 'Netflix', program: null, pasif: 'bekleme' }, tr(13, 58));
+  await iz._yaz('oturma', { bas: tr(13, 58), kaynak: 'apple', uygulama: 'Netflix', program: null }, tr(13, 59));
+  assert.equal(await d.tur(), null, 'yalnız pasif ve 2 dk\'dan kısa: sorgu yok');
+  assert.equal(sorgular(), 0);
+  await iz._yaz('oturma', { bas: tr(13, 59), kaynak: 'apple', uygulama: 'Netflix', program: null }, tr(14, 0));
+  await iz._yaz('oturma', { bas: tr(14, 0), kaynak: 'apple', uygulama: 'Netflix', program: null }, tr(14, 5));
+  saat.t = tr(14, 5);
+  assert.equal(await d.tur(), 0, 'izlenen başlıksız → hemen sorgu');
+  const dene = async (dk) => { saat.t = tr(14, 5) + dk * 60000; await d.tur(); return sorgular(); };
+  assert.equal(await dene(14), 1, '15 dk dolmadan yok');
+  assert.equal(await dene(15), 2, '15 dk sonra');
+  assert.equal(await dene(44), 2);
+  assert.equal(await dene(45), 3, 'sonra 30 dk');
+  assert.equal(await dene(104), 3);
+  assert.equal(await dene(105), 4, 'sonra 60 dk');
+  assert.equal(await dene(165), 5, 'yine 60 dk');
+  k.temizle();
+});

@@ -7,8 +7,9 @@
  * ajanın durum dizininde `netflix.cerez` (kullanıcı tools/tv-ajan/netflix-cerez.sh ile koyar; kod okumaz/yazdırmaz).
  *  - Çerezin oturumundaki ETKİN profil okunur (başka profilin guid'i boş liste döndürüyor — ölçüldü 18.10.2026).
  *  - Liste tarihe göre sıralı gelmiyor (ölçüldü) → birkaç sayfa alınıp sıralanır.
- *  - Sorgu yalnız başlığı eksik Netflix kesiti varken, en sık `aralikMs`'de bir (kullanıcı: rutin 60 dk; ölçüm süresince
- *    TV_AJAN_NETFLIX_ARALIK_DK=30) — kayıt gecikmeli
+ *  - Sorgu yalnız Netflix izlenirken/izlendiyse ve başlık eksikse (kullanıcı, 18.10.2026): ilk kontrol hemen; veri
+ *    yoksa 15 dk sonra, yine yoksa 30 dk sonra, sonra 60 dk'da bir. Başlık bulununca sıra sıfırlanır. İki sorgu
+ *    arası en az 10 dk (sık duraklat/devam sorgu yağdırmasın) — kayıt gecikmeli
  *    düşebilir; kesit bitişinden `vazgecMs` sonra hâlâ yoksa bırakılır. Netflix kullanım koşulları otomatik erişimi
  *    yasaklıyor: seyrek tutulur (kullanıcı riski kabul etti).
  */
@@ -91,42 +92,57 @@ export class NetflixGecmisi {
 }
 
 /**
- * Doldurucu: her `aralikMs`'de (varsayılan 60 dk) son 24 saatin başlığı eksik Netflix kesitlerine bakar; varsa geçmişi okur,
- * eşleşenleri izleme kaydına "ek" olarak yazar. Eksik yoksa Netflix'e hiç gidilmez.
+ * Doldurucu: dakikada bir YEREL izleme kaydına bakar (Netflix'e gitmeden). Başlığı eksik, gerçekten oynayan (pasif
+ * değil) ve en az `enKisaMs` süren bir Netflix kesiti varsa geçmişi sorgular; eşleşen başlıkları (pasif ve kısa
+ * kesitler dahil) kayda "ek" olarak yazar. Bulunamazsa sonraki deneme `adimlarMs` sırasıyla (15 → 30 → 60 → 60 … dk).
  */
 export class NetflixDoldurucu {
-  constructor({ izleme, gecmis, aralikMs = 60 * 60000, vazgecMs = 6 * 3600e3, simdi = Date.now, log = () => {} }) {
-    Object.assign(this, { izleme, gecmis, aralikMs, vazgecMs, simdi, log });
+  constructor({ izleme, gecmis, adimlarMs = [15, 30, 60].map((dk) => dk * 60000), enAzMs = 10 * 60000, enKisaMs = 2 * 60000, yoklamaMs = 60000, vazgecMs = 6 * 3600e3, simdi = Date.now, log = () => {} }) {
+    Object.assign(this, { izleme, gecmis, adimlarMs, enAzMs, enKisaMs, yoklamaMs, vazgecMs, simdi, log });
     this.zamanlayici = null;
+    this.deneme = 0;          // art arda başarısız sorgu
+    this.sonraki = 0;         // bir sonraki sorgunun en erken anı
+    this.sonSorgu = -Infinity;
   }
 
   baslat() {
     if (this.zamanlayici) return;
     const dongu = async () => {
-      try { await this.tur(); } catch (e) { this.log(`[netflix-geçmiş] okunamadı: ${e.message}`); }
-      this.zamanlayici = setTimeout(dongu, this.aralikMs);
+      try { await this.tur(); } catch (e) { this.log(`[netflix-geçmiş] okunamadı: ${e.message}`); this._ertele(); }
+      this.zamanlayici = setTimeout(dongu, this.yoklamaMs);
       this.zamanlayici.unref?.();
     };
-    this.zamanlayici = setTimeout(dongu, 60000);   // açılışta hemen değil: kayıt yüklensin
+    this.zamanlayici = setTimeout(dongu, this.yoklamaMs);   // açılışta hemen değil: kayıt yüklensin
     this.zamanlayici.unref?.();
   }
 
   durdur() { clearTimeout(this.zamanlayici); this.zamanlayici = null; }
 
-  /** Bir tur: eksik varsa sorgula ve doldur. Dönen: doldurulan kesit sayısı (sorgu yoksa null). */
+  _ertele() {
+    this.sonraki = this.simdi() + this.adimlarMs[Math.min(this.deneme, this.adimlarMs.length - 1)];
+    this.deneme++;
+  }
+
+  /** Bir tur. Dönen: doldurulan kesit sayısı; sorgu yapılmadıysa null. */
   async tur() {
     const t = this.simdi();
-    const eksikler = (await this.izleme.kesitler({ bas: t - 24 * 3600e3, bit: t + 1 }))
+    const eksik = (await this.izleme.kesitler({ bas: t - 24 * 3600e3, bit: t + 1 }))
       .filter((k) => /netflix/i.test(`${k.uygulama || ''} ${k.kaynak || ''}`) && !k.program && t - k.bit < this.vazgecMs);
-    if (!eksikler.length) return null;
+    const tetik = eksik.filter((k) => !k.pasif && k.bit - k.bas >= this.enKisaMs);   // izlenen, başlıksız
+    if (!tetik.length) { this.deneme = 0; this.sonraki = 0; return null; }
+    if (t < this.sonraki || t - this.sonSorgu < this.enAzMs) return null;
+    this.sonSorgu = t;
     const gecmis = await this.gecmis.oku();
-    if (!gecmis) return null;
+    if (!gecmis) { this._ertele(); return null; }   // çerez yok/geçersiz
     let dolan = 0;
-    for (const k of eksikler) {
+    const dolanlar = new Set();
+    for (const k of eksik) {
       const program = eslestir(k, gecmis);
-      if (program) { await this.izleme.ekYaz(k, { program, kaynak: 'netflix-gecmis' }); dolan++; }
+      if (program) { await this.izleme.ekYaz(k, { program, kaynak: 'netflix-gecmis' }); dolan++; dolanlar.add(k); }
     }
-    this.log(`[netflix-geçmiş] ${eksikler.length} eksik Netflix kesiti · ${dolan} dolduruldu`);
+    const kalan = tetik.filter((k) => !dolanlar.has(k)).length;
+    if (kalan) this._ertele(); else { this.deneme = 0; this.sonraki = 0; }
+    this.log(`[netflix-geçmiş] ${eksik.length} eksik Netflix kesiti · ${dolan} dolduruldu${kalan ? ` · sonraki deneme ${Math.round((this.sonraki - t) / 60000)} dk sonra` : ''}`);
     return dolan;
   }
 }

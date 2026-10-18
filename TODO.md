@@ -37,11 +37,6 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
 
 ## Önce bu
 
-- [ ] **Netflix izleme geçmişi aralığını 60 dk'ya döndür** (`tools/net/netflix-gecmis.mjs`, eklenti: 18.10.2026).
-      Kullanıcı: "şimdilik 30 dk, rutin 60 dk". Ölçüm için pi63'te `/etc/tv-ajan.env` içinde
-      `TV_AJAN_NETFLIX_ARALIK_DK=30` var. Kaydın Netflix'te kaç dakikada düştüğü ölçülünce bu satır silinir
-      (`sudo systemctl restart tv-ajan`), kod varsayılanı 60. Ölçüm: ajan günlüğünde `[netflix-geçmiş]` satırları +
-      Detail'de Netflix kesitinin başlığı ne zaman geldi.
 
 - [ ] **Kullanıcının telefonda canlı denemesi.** Girişli sayfayı ben açamıyorum; panel → ajan yolu
       birim testleri + VPS'ten ajana doğrudan istekle doğrulandı, panel sürecinin içinden değil.
