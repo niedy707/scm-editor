@@ -113,7 +113,7 @@ test('bekçi: kademeli — 1. duraklat + geri ×2, yine oynatılırsa 2. YouTube
   assert.deepEqual(uyarilar, [[MESAJ, 8000], [MESAJ, 4000], [UYARI, 10000]], '1. kademe MESAJ; 2. kademe MESAJ (4 sn) + UYARI');
   assert.match(UYARI.join(' '), /ülkenizde engellenmiştir/);
   assert.equal(UYARI.length, 4);
-  assert.match(UYARI[0], /^ {25}⚠️/, 'ilk satırın girintisi korunur');
+  assert.equal(UYARI[0].split('⚠️').length - 1, 10, 'başta 10 uyarı işareti');
   saat.t += 60000;
   await oynat();
   assert.equal(kapatma, 2, 'yine açılırsa yine kapatılır');
