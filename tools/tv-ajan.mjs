@@ -1064,11 +1064,15 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
           return;
         }
         if (url.pathname === '/bildirim') {
-          const mesaj = String(g.mesaj || '').trim();
+          // ortada: true → ekranın ortasında çok satırlı uyarı penceresi (satır başı girintisi korunur); yanıt beklemez.
+          const ortada = g.ortada === true;
+          const mesaj = ortada ? String(g.mesaj || '').replace(/^(\s*\n)+/, '').trimEnd() : String(g.mesaj || '').trim();
           const sureSn = Number(g.sureSn ?? 5);
-          if (!mesaj || mesaj.length > 160) throw new HttpHata(400, 'mesaj 1-160 karakter olmalı');
+          if (!mesaj.trim() || mesaj.length > (ortada ? 300 : 160)) throw new HttpHata(400, `mesaj 1-${ortada ? 300 : 160} karakter olmalı`);
+          if (ortada && mesaj.split('\n').length > 5) throw new HttpHata(400, 'mesaj en çok 5 satır');
           if (!Number.isInteger(sureSn) || sureSn < 5 || sureSn > 120) throw new HttpHata(400, 'süre 5-120 sn olmalı');
-          await t.bildirimGoster(mesaj, sureSn);
+          if (ortada) t.uyariGoster(mesaj.split('\n'), sureSn * 1000).catch(() => {});
+          else await t.bildirimGoster(mesaj, sureSn);
           log(`[tv] ${t.id} bildirim (${sureSn} sn)`);
           json(res, 200, { ok: true });
           return;

@@ -83,7 +83,7 @@ function sahteTv(oynayanlar) {
     id: 'tv1', appletv: { ip: '1.2.3.4', id: 'x' }, komutlar, bildirimler,
     appledaOynayan: async () => (oynayanlar.length > 1 ? oynayanlar.shift() : oynayanlar[0]),
     appleKomut: async (tus) => { komutlar.push(tus); },
-    bildirimGoster: async (m, sn) => { bildirimler.push([m, sn]); },
+    uyariGoster: async (m, ms) => { bildirimler.push([m, ms]); },
   };
 }
 
@@ -95,7 +95,7 @@ test('bekçi: kademeli — 1. duraklat + geri ×2, yine oynatılırsa 2. YouTube
   let kapatma = 0;
   tv.appleUygulamaKapat = async () => { kapatma++; };
   const uyarilar = [];
-  tv.uyariGoster = async (satirlar, ms) => { uyarilar.push([satirlar, ms]); };
+  tv.uyariGoster = async (satirlar, ms) => { uyarilar.push([satirlar, ms]); };   // MESAJ + UYARI birlikte
   const saat = { t: 1e12 };
   const b = new EngelBekcisi({ tvler: [tv], liste: l, bekle: async () => {}, simdi: () => saat.t });
   const oynat = async () => { tv.sira = [yt('playing'), yt('paused')]; return b.denetle(tv); };
@@ -103,14 +103,14 @@ test('bekçi: kademeli — 1. duraklat + geri ×2, yine oynatılırsa 2. YouTube
   const kural = await oynat();
   assert.equal(kural.tur, 'kelime');
   assert.deepEqual(tv.komutlar, ['pause', 'menu', 'menu'], '1. kademe: duraklat + oynatıcıdan çık');
-  assert.deepEqual(tv.bildirimler, [[MESAJ, 8]]);
+  assert.deepEqual(uyarilar, [[MESAJ, 8000]], '1. kademe: ortada 8 sn');
   assert.equal(l.durum().olaylar[0].baslik, 'Oyun videosu');
   // duraklatılmış haliyle tekrar sorulunca bir şey yapılmaz
   assert.equal(await b.denetle(tv), null);
   saat.t += 60000;
   await oynat();
   assert.equal(kapatma, 1, '2. kademe: YouTube kapatılır');
-  assert.deepEqual(uyarilar, [[UYARI, 10000]], '… ardından ortada uyarı');
+  assert.deepEqual(uyarilar, [[MESAJ, 8000], [MESAJ, 4000], [UYARI, 10000]], '1. kademe MESAJ; 2. kademe MESAJ (4 sn) + UYARI');
   assert.match(UYARI.join(' '), /ülkenizde engellenmiştir/);
   assert.equal(UYARI.length, 4);
   assert.match(UYARI[0], /^ {25}⚠️/, 'ilk satırın girintisi korunur');

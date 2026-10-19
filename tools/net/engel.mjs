@@ -24,7 +24,11 @@ import { readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-export const MESAJ = '🚫 Bu videoyu izleme izniniz yoktur';
+/** Her engelde ekranın ortasında (kullanıcının metni, 19.10.2026; köşe bildirimi satır sonunu ve girintiyi yutuyor). */
+export const MESAJ = [
+  '                   🚫 🚫 🚫 🚫 🚫',   // baştaki boşluklar korunur
+  'Bu videoyu izleme izniniz yoktur',
+];
 /** 2. kademede (YouTube kapatıldıktan sonra) ekranın ortasında — kullanıcının metni (18.10.2026, 19.10'da değişti). */
 export const UYARI = [
   '                         ⚠️ ⚠️ ⚠️ ⚠️ ⚠️',   // baştaki boşluklar korunur (uyariGoster bölünmez boşluğa çevirir)
@@ -215,7 +219,7 @@ export class EngelHata extends Error {
 
 /**
  * Bekçi: her `aralikMs`'de Apple TV'si olan, açık ve Apple TV girişindeki TV'lere "ne oynuyor" diye sorar.
- * TV nesnesinden beklenen: `appledaOynayan()` (TV kapalı/başka girişte → null), `appleKomut(tus)`, `bildirimGoster`,
+ * TV nesnesinden beklenen: `appledaOynayan()` (TV kapalı/başka girişte → null), `appleKomut(tus)`,
  * `appleUygulamaKapat()`, `uyariGoster(satirlar, ms)`.
  */
 export class EngelBekcisi {
@@ -265,7 +269,8 @@ export class EngelBekcisi {
     const ne = ['', 'duraklatılıp oynatıcıdan çıkıldı', 'YouTube kapatıldı'][seviye];
     this.log(`[engel] ${tv.id}: "${o.baslik}" (${o.sanatci || '?'}) ${ne} — kural ${kural.tur}: ${kural.deger} (kademe ${seviye})`);
     await tv.appleKomut('pause').catch((e) => this.log(`[engel] durdurulamadı: ${e.message}`));
-    tv.bildirimGoster(MESAJ, 8).catch(() => {});
+    // Ortadaki pencere: 1. kademede 8 sn; 2. kademede YouTube kapatılırken 4 sn, ardından UYARI (beklenmez — tuşlar sürer).
+    tv.uyariGoster(MESAJ, seviye === 1 ? 8000 : 4000).catch(() => {});
     if (seviye === 1) {
       await this.bekle(800);
       await tv.appleKomut('menu').catch(() => {});   // ilk "geri" oynatıcı düğmelerini gizler,
