@@ -26,7 +26,7 @@ import { randomUUID } from 'node:crypto';
 
 /** Her engelde ekranın ortasında (kullanıcının metni, 19.10.2026; köşe bildirimi satır sonunu ve girintiyi yutuyor). */
 export const MESAJ = [
-  '🚫 🚫 🚫 🚫 🚫',   // LG uyarı penceresi satır başı boşluğunu siliyor (ölçüldü 19.10.2026) — sola yaslı
+  '🚫 🚫 🚫 🚫 🚫 🚫 🚫 🚫 🚫 🚫',   // 10 işaret; LG uyarı penceresi satır başı boşluğunu siliyor (ölçüldü 19.10.2026)
   'Bu videoyu izleme izniniz yoktur',
 ];
 /** 2. kademede (YouTube kapatıldıktan sonra) ekranın ortasında — kullanıcının metni (18.10.2026, 19.10'da değişti). */

@@ -114,6 +114,7 @@ test('bekçi: kademeli — 1. duraklat + geri ×2, yine oynatılırsa 2. YouTube
   assert.match(UYARI.join(' '), /ülkenizde engellenmiştir/);
   assert.equal(UYARI.length, 4);
   assert.equal(UYARI[0].split('⚠️').length - 1, 10, 'başta 10 uyarı işareti');
+  assert.equal(MESAJ[0].split('🚫').length - 1, 10, 'engel mesajında da 10 işaret');
   saat.t += 60000;
   await oynat();
   assert.equal(kapatma, 2, 'yine açılırsa yine kapatılır');
