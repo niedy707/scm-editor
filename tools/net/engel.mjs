@@ -25,8 +25,13 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 export const MESAJ = '🚫 Bu videoyu izleme izniniz yoktur';
-/** 2. kademede (YouTube kapatıldıktan sonra) ekranın ortasında — kullanıcının metni, 18.10.2026. */
-export const UYARI = ['⚠️ Eğer aynı videoyu tekrar açmaya çalışırsanız', 'televizyonu tamamen kapatabilirim ve erişiminiz tam olarak gider.'];
+/** 2. kademede (YouTube kapatıldıktan sonra) ekranın ortasında — kullanıcının metni (18.10.2026, 19.10'da değişti). */
+export const UYARI = [
+  '                         ⚠️ ⚠️ ⚠️ ⚠️ ⚠️',   // baştaki boşluklar korunur (uyariGoster bölünmez boşluğa çevirir)
+  'Bu video ülkenizde engellenmiştir.',
+  'Eğer aynı videoyu tekrar açmaya çalışırsanız',
+  'Youtube erişiminiz tamamen kapanabilir.',
+];
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const EN_COK_KURAL = 500;
