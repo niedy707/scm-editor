@@ -63,7 +63,9 @@ test('kapsam: TV + Apple TV → mesaj, Apple TV uyku, TV kapat; yalnız TV → A
   const { k, temizle } = kur();
   await k.mesajAyarla('Bu TV kilitlidir, izlenemez!\nimza: deneme');
   assert.deepEqual(k.mesaj(), ['Bu TV kilitlidir, izlenemez!', 'imza: deneme']);
-  await assert.rejects(k.mesajAyarla('a\nb\nc\nd'), /3 satır/);
+  await assert.rejects(k.mesajAyarla('a\nb\nc\nd\ne\nf'), /5 satır/);
+  assert.deepEqual(await k.mesajAyarla('\n🔒 Uygun değil. 🔒\n\nℹ️ Sonra deneyiniz.\n\n'), ['🔒 Uygun değil. 🔒', '', 'ℹ️ Sonra deneyiniz.'], 'aradaki boş satır kalır, baş/son atılır');
+  await k.mesajAyarla('Bu TV kilitlidir, izlenemez!\nimza: deneme');
   await assert.rejects(k.kilitle('tv1', null, 'apple'), /kapsam/);
   const ikisi = sahteTv([true], { ip: '192.0.2.5', id: 'x' });
   await k.kilitle('tv1');

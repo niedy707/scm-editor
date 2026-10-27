@@ -60,10 +60,13 @@ export class TvKilidi {
   /** TV'de gösterilecek satırlar (ayar yoksa varsayılan). */
   mesaj() { return this.veri.mesaj && this.veri.mesaj.length ? this.veri.mesaj : KILIT_MESAJI; }
 
-  /** Mesaj satırları: dizi ya da "\n" ile ayrılmış metin; en çok 3 satır, satır başı 80 karakter. Boş → varsayılan. */
+  /** Mesaj satırları: dizi ya da "\n" ile ayrılmış metin; en çok 5 satır (aradaki boş satır dahil), satır başı 80 karakter. Boş → varsayılan. */
   async mesajAyarla(m) {
-    const satirlar = (Array.isArray(m) ? m : String(m ?? '').split('\n')).map((x) => String(x).trim()).filter(Boolean);
-    if (satirlar.length > 3 || satirlar.some((x) => x.length > 80)) throw new KilitHata(400, 'en çok 3 satır, satır başına 80 karakter');
+    // Aradaki boş satır korunur (ayırıcı — kullanıcı, 27.10.2026); baştaki/sondaki boş satırlar atılır.
+    const satirlar = (Array.isArray(m) ? m : String(m ?? '').split('\n')).map((x) => String(x).trim());
+    while (satirlar.length && !satirlar[0]) satirlar.shift();
+    while (satirlar.length && !satirlar[satirlar.length - 1]) satirlar.pop();
+    if (satirlar.length > 5 || satirlar.some((x) => x.length > 80)) throw new KilitHata(400, 'en çok 5 satır, satır başına 80 karakter');
     this.veri.mesaj = satirlar.length ? satirlar : null;
     await this._kaydet();
     return this.mesaj();
