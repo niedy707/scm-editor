@@ -14,6 +14,54 @@
 > 📌 **Bu defterden önce yazılmış kayıt:** [`NOTLAR-saha-16agustos2026.md`](NOTLAR-saha-16agustos2026.md)
 > — 16.08.2026 saha notları. Yeni kayıtlar buraya, o dosyaya değil.
 
+## 29.10.2026 — webOS 26'da yazılım sürümü okunamıyor sanıldı; `tv.nyx.*` yapılandırmasında duruyor
+
+**Belirti:** Salon TV (webOS 26) için sürüm numarası bilinmiyordu; `getCurrentSWInformation`
+imzasız eşleşmede `401 insufficient permissions` veriyor (13.10.2026 kaydı).
+**Kök neden:** Sürüm yalnız o uçta değil. `ssap://config/getConfigs` `{configNames:["tv.nyx.*"]}`
+imzasız anahtarla da cevap veriyor ve `tv.nyx.firmwareVersion` (`43.21.77`), `tv.nyx.platformVersion`
+(`11.2.0` = webOS 26), `tv.nyx.otaId` alanlarını taşıyor. `tv.model.*` / `tv.hw.*` de okunuyor.
+**Çözüm:** Sürüm gereken her yerde (ajan durumu, root uygunluk kontrolü) önce `getCurrentSWInformation`,
+401'de `getConfigs tv.nyx.*`. webOS 4.5'te (`imzali`) `tv.nyx.*` boş döner, orada eski uç çalışıyor.
+**Neden bariz olan işe yaramadı:** `getSystemInfo` yalnız model adı veriyor; yazılım güncelleme
+ekranını (`com.webos.app.softwareupdate`) açıp `executeOneShot` ile görmek de olmuyor — LG'nin ayar
+katmanı ekran görüntüsüne girmiyor, yalnız alttaki görüntü karartılmış çıkıyor (iki TV'de de).
+
+## 29.10.2026 — Ayar YAZMA ağdan mümkün: luna-alert yolu webOS 26'da imzasız manifestle çalışıyor
+
+**Belirti:** `ssap://settings/setSystemSettings` webOS 26 imzasız eşleşmede 401 veriyor (dış raporlar);
+"ayar yazan uç yok" sanılıyordu.
+**Kök neden:** bscpylgtv/ColorControl/LGTV Companion'ın kullandığı yol: `system.notifications/createAlert`
+düğmesinin `onClick`/`onclose`/`onfail` alanına `luna://com.webos.settingsservice/setSystemSettings`
+konur, `closeAlert` ile tetiklenir. Cevap dönmez; sonuç ayarı geri okuyarak görülür. Önkoşul el
+sıkışmada `WRITE_NOTIFICATION_ALERT` + `WRITE_SETTINGS` — bizimkinde ikisi de var.
+**Çözüm:** Salon (OLED83G55LW, 43.21.77) üzerinde ölçüldü: `picture.eyeComfortMode` on → off yazıldı,
+`getSystemSettings` ile `off` okundu, sonra `on`'a döndürüldü ve `on` okundu. Biçim bscpylgtv
+`webos_client.py` → `luna_request()` ile birebir aynı.
+**Neden bariz olan işe yaramadı:** Herkese açık `getSystemSettings` yalnız bir izin listesindeki
+anahtarları okuyor; listede olmayan her anahtar (`screenSaverAd`, `customizedAd`, webOS 4.5'te
+`automaticUpdate`…) `500 Application error` döner — "anahtar yok" değil, "okunamaz" demek. Kanal
+listesini yazan bir ayar yine yok; bu yol yalnız ayarlar içindir.
+**Ek (aynı gün, uygulamada):** Genel `setSystemSettings` webOS 4.5'te (imzalı) `option.livePlus`'ı yazdı
+ama `general.homePromotion`'a hem okuma hem yazma `500` — o anahtar luna-alert ile yazıldı, okunamadığı
+için ana ekran görüntüsüyle doğrulandı ("Sponsored" afişi kalktı; ana ekran `executeOneShot`'a giriyor,
+ayar katmanı girmiyor). luna-alert her servise açık değil: `com.webos.appInstallService/remove`
+(uygulama kaldırma) `createAlert` aşamasında `500` döndü — uygulama silmek için ana ekranın "Uygulama
+Listesini Düzenle" kutucuğu sürüldü (uzun basmaya gerek yok, satırın en sonunda).
+
+## 29.10.2026 — Kapalı (beklemedeki) TV'de 3001 açık ama eşleşme mesajsız kopuyor
+
+**Belirti:** `tv.mjs <ip> on` → `HATA: Bağlantı kapandı`. Port 3001 açık, TLS kuruluyor; `register`
+gönderilince TV soketi hiçbir mesaj yollamadan kapatıyor. İmzasız manifestle doğrudan denemek de aynı.
+**Kök neden:** TV kapalı (Hızlı Başlat+ / "Wi-Fi ile aç" açık olduğu için ağ kartı beklemede çalışıyor).
+Bu durumda SSAP sunucusu bağlantıyı kabul edip kaydı reddediyor. `lg-ssap.mjs`'teki imzasıza düşüş
+`blacklisted` mesajına bakıyor; mesaj gelmediği için düşüş hiç tetiklenmiyor.
+**Çözüm:** Wake-on-LAN (`tools/net/wol.mjs` → `wolGonder(mac, ip)`), sonra kayıt yeniden denenir —
+salon 5 sn'de, oturma odası 2 sn'de açıldı. Ajan zaten `uyan` akışında bunu yapıyor.
+**Neden bariz olan işe yaramadı:** "Port açık → TV açık" varsayımı yanlış; açıklık yalnız ağ kartını
+gösteriyor. Hata mesajı da yanıltıcı (bağlantı sorunu gibi okunuyor). Güç durumunu ancak eşleşmeden
+sonra `tvpower/power/getPowerState` söylüyor.
+
 ## 16.10.2026 — Yayın rehberi: digiturk VPS'e 403 veriyor, geçmiş günü BOŞ döndürüyor
 
 **Belirti:** TV'nin akışı güvenilmez çıkınca (aşağıdaki kayıt) "şu an ne var" dış rehbere taşındı.

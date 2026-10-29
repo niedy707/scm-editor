@@ -1,6 +1,6 @@
 # TODO — scm-editor
 
-> Son güncelleme: 17.10.2026
+> Son güncelleme: 29.10.2026
 
 Görev eklerken sadece başlık yazma: **ne yapılacak**, **nerede** (`dosya:satır`),
 **neden bekliyor** ve varsa **engeli** belirt. Kullanıcı bir karar verdiyse kararı da yaz.
@@ -11,6 +11,40 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
 Öneri numaraları (Ö-N) [`scm-editor_tara.md`](scm-editor_tara.md) raporuna aittir.
 
 ---
+
+## TV incelemesi (29.10.2026) — kararı kullanıcıda bekleyenler
+
+İki TV açılıp salt okunur incelendi (ayrıntı: `reports/Akıllı TV akıllandırma imkânları.md`, git dışı;
+teknik bulgular `COZUMLER.md` 29.10.2026). Salon **43.21.77** (webOS 26 / platform 11.2.0) — LG'nin
+sitesindeki son G5 dosyası 43.21.73, yani güncel; otomatik güncelleme açık. Oturma odası **05.40.97** —
+LG'nin bu model için yayımladığı son sürüm (07.07.2025), daha yenisi yok.
+
+- [x] **Live Plus + ana ekran reklamı kapatıldı (29.10.2026, kullanıcı onayıyla).** Salon (luna-alert):
+      `option.livePlus` on → off, `general.homePromotion` on → off — ikisi de geri okunarak doğrulandı.
+      Oturma (genel `setSystemSettings`): `livePlus` on → off, geri okundu. Oturmada `homePromotion` genel
+      uca kapalı (okuma ve yazma `500`) → luna-alert ile yazıldı; okunamadığı için ana ekran görüntüsüyle
+      doğrulandı ("Sponsored" etiketli afiş iki ayrı açılışta da yok).
+- [x] **Copilot kaldırıldı (salon, 29.10.2026).** Ana ekran → uygulama satırının sonu → "Uygulama Listesini
+      Düzenle" → Copilot → çöp simgesi → "Sil". `listApps`/`listLaunchPoints`'te artık yok. Oturma odasında
+      hiç yoktu. luna-alert ile kaldırma (`appInstallService/remove`) `500` verdi.
+- [ ] **Kullanıcı sözleşmelerini menüden geri çek (kullanıcı yapacak).** Hâlâ açık olanlar — salon:
+      `acrOnAllowed`, `acrAdAllowed`, `customAdAllowed`, `marketingOnAllowed`, `shoppingOnAllowed`,
+      `voiceAllowed`; oturma: `acrOnAllowed`, `acrAdAllowed`, `customAdAllowed`, `voiceAllowed`.
+      Yol — salon (webOS 26): Ayarlar → Tüm Ayarlar → Destek → Gizlilik ve Koşullar → Kullanıcı Sözleşmeleri;
+      oturma (webOS 4.5): Ayarlar → Tüm Ayarlar → Genel → Bu TV Hakkında → Kullanıcı Sözleşmeleri.
+      "Kullanım Koşulları" ve "Gizlilik Politikası"na dokunulmaz (uygulamalar kısıtlanabilir). Sonra ajan
+      `getSystemSettings` kategori `""` → `eulaStatus` ile doğrular. İçerik önerisi satırı ("Şu anda popüler")
+      ayrı bir ayar (`other.contentRecommendation`) — istenmedi, açık.
+- [ ] **Ayar bekçisi (rapordaki 2. adım).** Ajan yukarıdaki anahtarları + `listApps`'i düzenli okusun,
+      değişince Bark ile haber versin (güncelleme sonrası geri açılan ayarı yakalamak için). Sürüm
+      numarası `getConfigs tv.nyx.*`'dan (webOS 26) ya da `getCurrentSWInformation`'dan (webOS 4.5).
+- [ ] **Oturma odası TV'si yama almıyor.** caniroot verisine göre 05.40.97 üç kamuya açık root aracına
+      açık ve yama kaydı yok; LG yeni sürüm yayımlamıyor. Öneri: TV'ye mağaza uygulaması kurma, tarayıcı
+      açma, DNS filtresi (rapordaki 4. adım); ev yönlendiricisi destekliyorsa IoT ağına alma
+      (`../Network/` ile birlikte değerlendirilecek).
+- [ ] **`lg-ssap.mjs`: beklemedeki TV için anlaşılır hata.** Kapalı TV'de 3001 açık kalıyor ve eşleşme
+      mesajsız kopuyor → bugün "Bağlantı kapandı" yazıyor. "TV beklemede olabilir — WoL gerekli" demeli
+      (`tools/net/lg-ssap.mjs` `register()`; `COZUMLER.md` 29.10.2026).
 
 ## Tamamlanan (14.10.2026)
 
@@ -40,7 +74,12 @@ referansıdır. Bir görev kapandığında kökteki karşılığı `../TODO_done
 
 - [ ] **Kullanıcının telefonda canlı denemesi.** Girişli sayfayı ben açamıyorum; panel → ajan yolu
       birim testleri + VPS'ten ajana doğrudan istekle doğrulandı, panel sürecinin içinden değil.
-- [ ] **Uzaktan açmayı oturma odası TV'sinde doğrula.** 16.10.2026'da kuruldu. **Salon doğrulandı**
+- [x] **Uzaktan açmayı oturma odası TV'sinde doğrula.** ✅ **29.10.2026 kapandı:** iki TV'de de
+      `network.wolwowlOnOff = true` ("Wi-Fi ile aç" açık, ağdan okundu); oturma odası kapalıyken
+      (ağı yanıt vermiyordu) Mac'ten gönderilen sihirli paketle 2 sn'de açıldı; ajan kaydında panelden
+      kapalı TV'yi açıp kanala geçme 28.10.2026 16:59 ve 18:06'da başarılı ("uyanma sonrası kanal tuttu",
+      "TV açılarak"); digiturk rehberi pi63'ten her gün çekiliyor (107-108 kanal). Aşağısı tarihçe.
+      16.10.2026'da kuruldu. **Salon doğrulandı**
       (16.10 22:10, kapalıyken Kanal D'ye basıldı → açılıp kanala geçti; kullanıcı: "çalışıyor").
       Rehber pi63'ten çalışıyor, gece gün değişiminde yeni günü kendisi çekti (17.10 01:58, 108 kanal).
       Kalan: oturma odası (55SM8000PLA — kapalıyken ağı tamamen kapanıyor, "Wi-Fi ile aç" ayarına bağlı).

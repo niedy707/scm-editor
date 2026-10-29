@@ -19,3 +19,7 @@ data/tv-*-20[0-9][0-9]-*.json
 # TV ajanı: TV listesi (yerel adres taşır, depo public)
 tv-ajan.tvler.json
 __pycache__/
+
+# Araştırma notları ve raporları: ev altyapısından söz eder (depo public)
+research_notes/
+reports/
