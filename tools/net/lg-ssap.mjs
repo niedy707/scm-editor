@@ -156,7 +156,22 @@ export class LgSsap {
    * @param clientKey önceden alınmış anahtar; yoksa TV ekranında onay istenir.
    * `this.manifest` hangi manifestle eşleşildiğini söyler ('imzali' | 'imzasiz').
    */
-  async register(clientKey, { timeoutMs = 90000, onFallback = () => {} } = {}) {
+  async register(clientKey, opts = {}) {
+    try {
+      return await this._register(clientKey, opts);
+    } catch (e) {
+      // Beklemedeki TV 3001'i açık tutar, eşleşme mesajını alıp yanıtsız kapatır (ölçüldü, 29.10.2026 —
+      // COZUMLER.md). "Bağlantı kapandı" tek başına neden söylemiyor.
+      if (e.message !== 'Bağlantı kapandı') throw e;
+      const h = new Error(`${this.ip}: TV eşleşmeyi yanıtsız kapattı — büyük olasılıkla beklemede (ekran kapalı). `
+        + 'Önce TV\'yi aç: kumandayla, ev panelinden ya da Wake-on-LAN ile (net/wol.mjs → wolGonder).');
+      h.kod = 'beklemede';
+      h.cause = e;
+      throw h;
+    }
+  }
+
+  async _register(clientKey, { timeoutMs = 90000, onFallback = () => {} } = {}) {
     const attempt = (payload) => {
       if (clientKey) payload['client-key'] = clientKey;
       return this._send({ type: 'register', payload }, { until: 'registered', timeoutMs });

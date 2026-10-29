@@ -60,6 +60,8 @@
  *                                                   → TV kilidi (dk yok → süresiz; kapsam tv | tv+apple) — net/kilit.mjs
  *   GET  /engel  · POST /engel {metin, tur?}  · DELETE /engel?id=  · POST /engel/ayar {acik}
  *                                                   → YouTube engelleri (kurallar, son engellenenler) — net/engel.mjs
+ *   GET  /ayar                     → ayar bekçisi: son okunan reklam/izleme ayarları, sözleşmeler, sürüm + değişiklik
+ *                                     olayları (değişiklik Bark'la da gider) — net/ayar-bekcisi.mjs
  */
 
 import http from 'node:http';
@@ -86,6 +88,7 @@ import { EngelListesi, EngelBekcisi } from './net/engel.mjs';
 import { TvKilidi, KilitBekcisi } from './net/kilit.mjs';
 import { NetflixOkuyucu, ekranYazisi } from './net/netflix-ekran.mjs';
 import { NetflixGecmisi, NetflixDoldurucu } from './net/netflix-gecmis.mjs';
+import { AyarBekcisi, barkGonderici } from './net/ayar-bekcisi.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -821,7 +824,7 @@ export async function youtubeEkle(kesitler, youtube, butceMs = 6000) {
 /** İşlem kaydı için isteğin kaynağı: panel (kumanda arayüzü, `X-Istemci: panel`) ya da dogrudan (betik/komut). */
 const istemci = (req) => (req.headers['x-istemci'] === 'panel' ? 'panel' : 'dogrudan');
 
-export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null, youtube = null, engel = null, kilit = null } = {}) {
+export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = null, zamanlayici = null, izleme = null, youtube = null, engel = null, kilit = null, ayar = null } = {}) {
   const byId = new Map(tvler.map((t) => [t.id, t]));
   const tvAl = (id) => {
     const t = byId.get(String(id || ''));
@@ -966,6 +969,12 @@ export function sunucuKur(tvler, { token = TOKEN, log = console.log, rehber = nu
           return;
         }
         throw new HttpHata(405, 'yöntem desteklenmiyor');
+      }
+      // Ayar bekçisi: salt okunur — kapatılan ayar ya da silinen uygulama geri geldi mi.
+      if (req.method === 'GET' && url.pathname === '/ayar') {
+        if (!ayar) throw new HttpHata(503, 'ayar bekçisi kurulu değil');
+        json(res, 200, ayar.durum());
+        return;
       }
       if (req.method === 'GET' && url.pathname === '/zamanlayici') {
         if (!zamanlayici) throw new HttpHata(503, 'zamanlayıcı kurulu değil');
@@ -1215,7 +1224,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   new KilitBekcisi({ tvler, kilit, log: console.log }).baslat();
   const kilitli = Object.keys(kilit.durum().kilitler);
   console.log(`[kilit] bekçi açık${kilitli.length ? ` · kilitli: ${kilitli.join(', ')}` : ''}`);
-  const sunucu = sunucuKur(tvler, { rehber, zamanlayici, izleme, youtube, engel, kilit });
+  // Ayar bekçisi: kapatılan reklam/izleme ayarı ya da silinen uygulama (güncellemeyle) geri gelirse Bark.
+  // Anahtar systemd LoadCredential ile $CREDENTIALS_DIRECTORY/bark.env'de (tv-ajan.service); Mac'te BARK_ENV.
+  const barkAyar = process.env.CREDENTIALS_DIRECTORY ? join(process.env.CREDENTIALS_DIRECTORY, 'bark.env') : process.env.BARK_ENV;
+  const bildir = process.env.BARK_SH && barkAyar && existsSync(barkAyar) ? barkGonderici({ betik: process.env.BARK_SH, ayar: barkAyar, log: console.log }) : null;
+  const ayar = new AyarBekcisi({ tvler, dizin: DURUM_DIZINI, bildir, log: console.log });
+  await ayar.yukle();
+  ayar.baslat();
+  console.log(`[ayar] bekçi açık (saatte bir, yalnız TV açıkken)${bildir ? ' · Bark ✓' : ' · ⚠️ Bark yok — değişiklik yalnız kayıtta (GET /ayar)'}`);
+  const sunucu = sunucuKur(tvler, { rehber, zamanlayici, izleme, youtube, engel, kilit, ayar });
   sunucu.listen(PORT, HOST, () => {
     const ozet = tvler.map((t) => `${t.id}${t.anahtar ? '' : ' (anahtarsız!)'}${t.mac ? '' : ' (MAC yok — açılamaz)'}`).join(', ');
     console.log(`[tv-ajan] ${HOST}:${PORT} dinleniyor · TV'ler: ${ozet} · rehber: ${DURUM_DIZINI}`);
@@ -1224,7 +1241,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const isit = () => rehber.gun(trGunu(Date.now())).catch(() => {});
   isit();
   setInterval(isit, 3 * 60 * 60 * 1000);
-  const kapan = () => { zamanlayici.durdur(); izleme?.durdur(); for (const t of tvler) t.birak(); sunucu.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000).unref(); };
+  const kapan = () => { zamanlayici.durdur(); izleme?.durdur(); ayar.durdur(); for (const t of tvler) t.birak(); sunucu.close(() => process.exit(0)); setTimeout(() => process.exit(0), 2000).unref(); };
   process.on('SIGTERM', kapan);
   process.on('SIGINT', kapan);
 }

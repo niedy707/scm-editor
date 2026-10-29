@@ -17,6 +17,10 @@ Type=simple
 ExecStart=/usr/bin/node /opt/tv-ajan/tools/tv-ajan.mjs
 WorkingDirectory=/opt/tv-ajan
 EnvironmentFile=/etc/tv-ajan.env
+# Ayar bekçisinin Bark anahtarı: /etc/tv-ajan-bark.env (root:root 600) servise yalnız çalışırken özel bir
+# ramfs'te ($CREDENTIALS_DIRECTORY/bark.env) açılır; ajan bunu bark.sh'a BARK_ENV olarak verir. kur.sh oluşturur.
+Environment=BARK_SH=/usr/local/bin/bark.sh
+LoadCredential=bark.env:/etc/tv-ajan-bark.env
 
 # Tailscale adresi açılmadan başlarsa bağlanamaz (EADDRNOTAVAIL) — yeniden dener.
 Restart=always

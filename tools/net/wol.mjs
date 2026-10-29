@@ -4,7 +4,8 @@
  * SSAP'ın "aç" ucu yok: TV kapalıyken ya ağı tamamen kapalıdır (55SM8000PLA, ping de yok) ya da
  * bekleme modunda bağlantıyı kabul edip ilk mesajda kapatır (OLED83G55LW). İkisini de uyandıran
  * tek yol sihirli paket. Şart: TV ayarlarında "Mobil TV Açık → Wi-Fi ile aç" (modele göre ad
- * değişir) açık olmalı. ⚠️ 16.10.2026'da iki TV'de de henüz denenmedi.
+ * değişir) açık olmalı. İki TV'de de çalıştığı görüldü (29.10.2026: ayar ikisinde açık; uyandırma
+ * ~2 sn, ajan kaydında oturma odası 28.10 16:59 ve 18:06).
  */
 
 import dgram from 'node:dgram';

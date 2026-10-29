@@ -1,6 +1,6 @@
 # TODO — scm-editor
 
-> Son güncelleme: 29.10.2026
+> Son güncelleme: 30.10.2026
 
 Görev eklerken sadece başlık yazma: **ne yapılacak**, **nerede** (`dosya:satır`),
 **neden bekliyor** ve varsa **engeli** belirt. Kullanıcı bir karar verdiyse kararı da yaz.
@@ -35,16 +35,24 @@ LG'nin bu model için yayımladığı son sürüm (07.07.2025), daha yenisi yok.
       "Kullanım Koşulları" ve "Gizlilik Politikası"na dokunulmaz (uygulamalar kısıtlanabilir). Sonra ajan
       `getSystemSettings` kategori `""` → `eulaStatus` ile doğrular. İçerik önerisi satırı ("Şu anda popüler")
       ayrı bir ayar (`other.contentRecommendation`) — istenmedi, açık.
-- [ ] **Ayar bekçisi (rapordaki 2. adım).** Ajan yukarıdaki anahtarları + `listApps`'i düzenli okusun,
-      değişince Bark ile haber versin (güncelleme sonrası geri açılan ayarı yakalamak için). Sürüm
-      numarası `getConfigs tv.nyx.*`'dan (webOS 26) ya da `getCurrentSWInformation`'dan (webOS 4.5).
+- [x] **Ayar bekçisi kuruldu (30.10.2026, pi63).** `tools/net/ayar-bekcisi.mjs`: saatte bir, yalnız TV açıkken
+      `livePlus`, `homePromotion`, `eulaStatus` bayrakları, `listApps`, sürüm okunur; fark → olay + Bark. Okunamayan
+      değer (500/zaman aşımı) değişiklik sayılmaz; TV açıkken hiçbir şey okunamazsa da Bark (günde bir). Uç
+      `GET /ayar`, kayıt `/var/lib/tv-ajan/ayar.json`, Bark anahtarı `/etc/tv-ajan-bark.env` (`LoadCredential`).
+      Doğrulama: pi63'teki 21 dosya kurulumdan önce git HEAD ile aynıydı; kur.sh 22 dosyayı sha256'yla doğruladı;
+      `/ayar` `/kilit` `/engel` 200; Bark servisle aynı kullanıcı + kimlik bilgisiyle `code 200`. **Henüz
+      doğrulanmadı:** gerçek TV'den ilk okuma — kurulumda iki TV de kapalıydı (journal'da `[ayar] <tv>: ilk okuma`
+      satırı görülünce tamam).
 - [ ] **Oturma odası TV'si yama almıyor.** caniroot verisine göre 05.40.97 üç kamuya açık root aracına
-      açık ve yama kaydı yok; LG yeni sürüm yayımlamıyor. Öneri: TV'ye mağaza uygulaması kurma, tarayıcı
-      açma, DNS filtresi (rapordaki 4. adım); ev yönlendiricisi destekliyorsa IoT ağına alma
-      (`../Network/` ile birlikte değerlendirilecek).
-- [ ] **`lg-ssap.mjs`: beklemedeki TV için anlaşılır hata.** Kapalı TV'de 3001 açık kalıyor ve eşleşme
-      mesajsız kopuyor → bugün "Bağlantı kapandı" yazıyor. "TV beklemede olabilir — WoL gerekli" demeli
-      (`tools/net/lg-ssap.mjs` `register()`; `COZUMLER.md` 29.10.2026).
+      açık ve yama kaydı yok; LG yeni sürüm yayımlamıyor. Kalan öneri: TV'ye mağaza uygulaması kurma, tarayıcı
+      açma (ayar bekçisi yeni uygulama kurulursa artık Bark atıyor). **Ağda ayırma elendi (30.10.2026):**
+      `../Network/ev_cihaz_envanteri.md` "Wi-Fi ağları" — Deco'nun IoT ağı ana ağla aynı adres bloğunda, yalnız
+      parola ayrımı; gerçek ayrım VLAN ister, Deco SSID başına VLAN etiketi üretmiyor. Misafir ağı ise pi63'ün
+      TV'ye ulaşmasını keser (kumanda, kilit, YouTube engeli çalışmaz). DNS filtresi (rapordaki 4. adım) tüm evin
+      DNS'ini değiştirir — **kullanıcı kararı bekliyor**, yapılmadı.
+- [x] **`lg-ssap.mjs`: beklemedeki TV için anlaşılır hata (30.10.2026).** `register()` eşleşmede yanıtsız
+      kopan bağlantıyı `kod: 'beklemede'` hatasına çevirir ("TV büyük olasılıkla beklemede — önce aç: kumanda,
+      ev paneli ya da Wake-on-LAN"); test `tools/tv-ajan.test.mjs`.
 
 ## Tamamlanan (14.10.2026)
 

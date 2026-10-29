@@ -18,6 +18,7 @@ import { sihirliPaket, yayinAdresi } from './net/wol.mjs';
 import { uyandir, Tv, sunucuKur, gucKapaliMi } from './tv-ajan.mjs';
 import { Zamanlayici } from './net/zamanlayici.mjs';
 import { AppleTvKopru } from './net/atv-kopru.mjs';
+import { LgSsap } from './net/lg-ssap.mjs';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 
@@ -764,4 +765,14 @@ test('beklemedeki TV (eski oturum yanıt veriyor): durum kapalı der, kanal dü�
   assert.equal(k.acildi, true);
   assert.equal(s.olaylar.indexOf('wol') < s.olaylar.indexOf('kanal'), true, 'önce uyandırma, sonra kanal');
   assert.equal((await tv.durum()).acik, true);
+});
+
+test('lg-ssap: eşleşmede yanıtsız kapanan bağlantı → "beklemede" hatası (29.10.2026)', async () => {
+  // Beklemedeki TV 3001'i açık tutar, eşleşme mesajını alıp soketi kapatır — kapanış bekleyenleri düşürür.
+  const tv = new LgSsap('192.0.2.1');
+  tv.ws = { send() { queueMicrotask(() => { for (const { fail } of tv.pending.values()) fail(new Error('Bağlantı kapandı')); tv.pending.clear(); }); } };
+  await assert.rejects(tv.register('anahtar'), (e) => e.kod === 'beklemede' && /beklemede/.test(e.message) && /Wake-on-LAN/.test(e.message));
+  // Başka hatalar olduğu gibi geçer.
+  tv.ws = { send() { queueMicrotask(() => { for (const { fail } of tv.pending.values()) fail(new Error('yanıt gelmedi (zaman aşımı)')); tv.pending.clear(); }); } };
+  await assert.rejects(tv.register('anahtar'), /zaman aşımı/);
 });

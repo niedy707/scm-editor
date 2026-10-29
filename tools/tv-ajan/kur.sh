@@ -32,7 +32,7 @@ echo "── 3/6  Dosyalar → $HEDEF"
 DOSYALAR=(
   tools/tv-ajan.mjs tools/ws-client.mjs tools/ssap-handshake.json
   tools/net/lg-ssap.mjs tools/net/lg-input.mjs tools/net/lg-screen.mjs tools/net/kanal-bul.mjs
-  tools/net/rehber.mjs tools/net/wol.mjs tools/net/zamanlayici.mjs tools/net/atv-kopru.mjs tools/net/izleme.mjs tools/net/youtube-bul.mjs tools/net/engel.mjs tools/net/kilit.mjs tools/net/netflix-ekran.mjs tools/net/netflix-gecmis.mjs
+  tools/net/rehber.mjs tools/net/wol.mjs tools/net/zamanlayici.mjs tools/net/atv-kopru.mjs tools/net/izleme.mjs tools/net/youtube-bul.mjs tools/net/engel.mjs tools/net/kilit.mjs tools/net/netflix-ekran.mjs tools/net/netflix-gecmis.mjs tools/net/ayar-bekcisi.mjs
   tools/atv-yardimci.py tools/ekran-yazi.py tools/ekran-hareket.py
   web/lib/order.js
 )
@@ -83,6 +83,19 @@ EOF
   )
   echo "     oluşturuldu (belirteç üretildi, ekrana yazılmadı) · adres $TS_IP:3027"
 fi
+
+# Ayar bekçisinin Bark anahtarı (net/ayar-bekcisi.mjs): servise LoadCredential ile açılır — dosya yoksa
+# servis HİÇ başlamaz, bu yüzden burada denetlenir. pi63'te yagmur-pi63 aynı telefona gönderiyor; kopyası alınır.
+BARK_AYAR=/etc/tv-ajan-bark.env
+if [[ -f $BARK_AYAR ]]; then
+  echo "     Bark anahtarı var ✓"
+elif [[ -f /etc/yagmur-pi63-bark.env ]]; then
+  install -o root -g root -m 600 /etc/yagmur-pi63-bark.env "$BARK_AYAR"
+  echo "     Bark anahtarı /etc/yagmur-pi63-bark.env'den kopyalandı (root 600) ✓"
+else
+  echo "!!  $BARK_AYAR yok — Mac'teki ~/.config/bark/bark.env'i buraya root:root 600 olarak koy, sonra yeniden çalıştır"; exit 1
+fi
+[[ -x /usr/local/bin/bark.sh ]] || { echo "!!  /usr/local/bin/bark.sh yok (kanonik: ~/Projects/_global-scripts/bark/bark.sh)"; exit 1; }
 
 echo "── 6/6  Servis"
 install -o root -g root -m 644 "$KAYNAK/tools/tv-ajan/tv-ajan.service" /etc/systemd/system/tv-ajan.service
